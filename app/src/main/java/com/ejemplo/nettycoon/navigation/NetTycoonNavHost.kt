@@ -1,43 +1,90 @@
 package com.ejemplo.nettycoon.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.ejemplo.nettycoon.auth.AuthRepository
+import com.ejemplo.nettycoon.auth.AuthRepositoryFirebase
+import com.ejemplo.nettycoon.auth.AuthViewModel
+import com.ejemplo.nettycoon.auth.AuthViewModelFactory
 import com.ejemplo.nettycoon.ui.login.LoginScreen
+import com.ejemplo.nettycoon.ui.login.RegistroScreen
 import com.ejemplo.nettycoon.ui.network.HomeScreen
 
 /**
- * NavHost raíz de NetTycoon.
+ * NavHost raíz de NetTycoon con el gate condicional de autenticación.
  *
- * PASO 1: solo dos destinos placeholder ("login" y "home") para validar que la
- * navegación funciona. El gate condicional de autenticación (sesión → home;
- * sin sesión → login) se implementará en un paso posterior; por ahora se arranca
- * en [Rutas.Login].
+ * - El destino inicial depende de la sesión: si hay usuario → Home; si no → Login.
+ * - Login/Registro con éxito → Home limpiando el back stack (popUpTo Login inclusive).
+ * - Cerrar sesión en Home → Login limpiando el back stack (popUpTo Home inclusive).
+ *
+ * El repositorio y el [AuthViewModel] se crean aquí (composición raíz) y se comparten
+ * entre las pantallas mediante una fábrica simple, sin framework de DI.
  */
 @Composable
 fun NetTycoonNavHost(
     modifier: Modifier = Modifier,
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    repositorio: AuthRepository = remember { AuthRepositoryFirebase() },
 ) {
+    val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(repositorio))
+
+    // Gate: destino inicial según la sesión actual (evaluado una sola vez al componer).
+    val startDestination = remember {
+        if (authViewModel.haySesion()) Rutas.Home.ruta else Rutas.Login.ruta
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Rutas.Login.ruta,
-        modifier = modifier
+        startDestination = startDestination,
+        modifier = modifier,
     ) {
         composable(Rutas.Login.ruta) {
             LoginScreen(
-                onIrAHome = {
+                viewModel = authViewModel,
+                onNavegarARegistro = { navController.navigate(Rutas.Registro.ruta) },
+                onAuthExitoso = {
+                    authViewModel.consumirExito()
                     navController.navigate(Rutas.Home.ruta) {
                         popUpTo(Rutas.Login.ruta) { inclusive = true }
                     }
-                }
+                },
+                onBypassDev = {
+                    navController.navigate(Rutas.Home.ruta) {
+                        popUpTo(Rutas.Login.ruta) { inclusive = true }
+                    }
+                },
             )
         }
+
+        composable(Rutas.Registro.ruta) {
+            RegistroScreen(
+                viewModel = authViewModel,
+                onVolverALogin = { navController.popBackStack() },
+                onAuthExitoso = {
+                    authViewModel.consumirExito()
+                    navController.navigate(Rutas.Home.ruta) {
+                        popUpTo(Rutas.Login.ruta) { inclusive = true }
+                    }
+                },
+            )
+        }
+
         composable(Rutas.Home.ruta) {
-            HomeScreen()
+            HomeScreen(
+                onCerrarSesion = {
+                    authViewModel.cerrarSesion()
+                    authViewModel.consumirExito()
+                    navController.navigate(Rutas.Login.ruta) {
+                        popUpTo(Rutas.Home.ruta) { inclusive = true }
+                    }
+                },
+            )
         }
     }
 }

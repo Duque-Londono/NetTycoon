@@ -17,9 +17,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,31 +29,30 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ejemplo.nettycoon.BuildConfig
 import com.ejemplo.nettycoon.auth.AuthViewModel
 import com.ejemplo.nettycoon.auth.EstadoOperacion
 
 /**
- * Pantalla de inicio de sesión (Material 3).
+ * Pantalla de registro (Material 3).
  *
- * MVVM: solo habla con [AuthViewModel]. La navegación se resuelve vía callbacks.
+ * MVVM: solo habla con [AuthViewModel]. La confirmación de contraseña se valida en el
+ * ViewModel (coincidencia) antes de llamar a Firebase.
  */
 @Composable
-fun LoginScreen(
+fun RegistroScreen(
     viewModel: AuthViewModel,
-    onNavegarARegistro: () -> Unit,
+    onVolverALogin: () -> Unit,
     onAuthExitoso: () -> Unit,
-    onBypassDev: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val estado by viewModel.estado.collectAsStateWithLifecycle()
 
-    // Cuando la operación termina en éxito, deja que el gate de navegación actúe.
-    androidx.compose.runtime.LaunchedEffect(estado.operacion) {
+    LaunchedEffect(estado.operacion) {
         if (estado.operacion is EstadoOperacion.Exito) onAuthExitoso()
     }
 
     var passwordVisible by remember { mutableStateOf(false) }
+    var confirmarVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -63,11 +63,11 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "NetTycoon",
+            text = "Crear cuenta",
             style = MaterialTheme.typography.headlineMedium,
         )
         Text(
-            text = "Inicia sesión para continuar",
+            text = "Regístrate para empezar a jugar",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -102,6 +102,25 @@ fun LoginScreen(
             },
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = estado.confirmarPassword,
+            onValueChange = viewModel::onConfirmarPasswordChange,
+            label = { Text("Confirmar contraseña") },
+            singleLine = true,
+            isError = estado.confirmarPasswordInvalido,
+            enabled = !estado.cargando,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            visualTransformation =
+                if (confirmarVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                TextButton(onClick = { confirmarVisible = !confirmarVisible }) {
+                    Text(if (confirmarVisible) "Ocultar" else "Mostrar")
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         val mensajeError = estado.mensajeError
         if (mensajeError != null) {
@@ -117,7 +136,7 @@ fun LoginScreen(
         Spacer(Modifier.height(24.dp))
 
         Button(
-            onClick = viewModel::iniciarSesion,
+            onClick = viewModel::registrar,
             enabled = !estado.cargando,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -128,20 +147,13 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onPrimary,
                 )
             } else {
-                Text("Iniciar sesión")
+                Text("Registrarse")
             }
         }
 
         Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onNavegarARegistro, enabled = !estado.cargando) {
-            Text("¿No tienes cuenta? Regístrate")
-        }
-
-        // Bypass de desarrollo: solo se compila y muestra en builds debug.
-        if (BuildConfig.DEBUG) {
-            TextButton(onClick = onBypassDev, enabled = !estado.cargando) {
-                Text("Entrar sin cuenta (dev)")
-            }
+        TextButton(onClick = onVolverALogin, enabled = !estado.cargando) {
+            Text("¿Ya tienes cuenta? Inicia sesión")
         }
     }
 }
