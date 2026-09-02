@@ -1,15 +1,20 @@
+# === Android / Gradle ===
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+.gradle/
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+
+# Archivos locales y secretos (NO subir)
 local.properties
+google-services.json
+
+# === Android Studio / IntelliJ (norma Android: excluir .idea) ===
+.idea/
+
+# === Kotlin ===
+.kotlin/
+
+# === Sistema operativo ===
+.DS_Store
