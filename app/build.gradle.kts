@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -35,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -53,6 +55,7 @@ dependencies {
 
     // Lifecycle / ViewModel para Compose
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // Corrutinas
     implementation(libs.kotlinx.coroutines.android)
@@ -66,6 +69,12 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging.interceptor)
+
+    // Firebase Authentication (cableado). El BoM alinea las versiones de Firebase.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    // Habilita Task.await() para envolver las llamadas de Firebase en corrutinas.
+    implementation(libs.kotlinx.coroutines.play.services)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
