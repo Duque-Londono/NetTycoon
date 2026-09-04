@@ -35,4 +35,8 @@ interface ReglaFirewallDao {
     /** Consulta puntual por id (usada, entre otros, por la prueba instrumentada). */
     @Query("SELECT * FROM regla_firewall WHERE id = :id")
     suspend fun obtenerPorId(id: Long): ReglaFirewall?
+
+    /** Reglas activas del usuario en una lectura puntual (no reactiva), para el motor. */
+    @Query("SELECT * FROM regla_firewall WHERE owner = :owner AND activa = 1 ORDER BY creadaEn DESC")
+    suspend fun obtenerActivasPorOwner(owner: String): List<ReglaFirewall>
 }

@@ -29,4 +29,8 @@ class ReglaFirewallRepository(
     suspend fun eliminarRegla(regla: ReglaFirewall) = dao.eliminar(regla)
 
     suspend fun obtenerRegla(id: Long): ReglaFirewall? = dao.obtenerPorId(id)
+
+    /** Reglas activas del usuario en una lectura puntual, para alimentar el motor de firewall. */
+    suspend fun obtenerReglasActivas(owner: String): List<ReglaFirewall> =
+        dao.obtenerActivasPorOwner(owner)
 }
