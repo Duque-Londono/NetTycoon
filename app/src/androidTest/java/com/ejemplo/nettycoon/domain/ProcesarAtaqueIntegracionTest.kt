@@ -8,6 +8,8 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.data.repository.GeoIpRepository
+import com.ejemplo.nettycoon.data.repository.GeoIpResultado
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.BalancePartida
@@ -46,7 +48,12 @@ class ProcesarAtaqueIntegracionTest {
         val reglaRepo = ReglaFirewallRepository(db.reglaFirewallDao())
         eventoRepo = EventoAtaqueRepository(db.eventoAtaqueDao())
         partidaRepo = PartidaRepository(db.estadoPartidaDao())
-        useCase = ProcesarAtaqueUseCase(reglaRepo, eventoRepo, partidaRepo)
+        // Geo-IP falsa (sin red en tests): la E2E no depende de la API real.
+        val geoIpRepo = object : GeoIpRepository() {
+            override suspend fun consultar(ip: String): GeoIpResultado =
+                GeoIpResultado.Error("sin red (test)")
+        }
+        useCase = ProcesarAtaqueUseCase(reglaRepo, eventoRepo, partidaRepo, geoIpRepo)
     }
 
     @After

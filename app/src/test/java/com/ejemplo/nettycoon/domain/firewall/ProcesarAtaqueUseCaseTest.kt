@@ -4,6 +4,8 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.data.repository.GeoIpRepository
+import com.ejemplo.nettycoon.data.repository.GeoIpResultado
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
@@ -11,11 +13,24 @@ import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeReglaFirewallDao
 import com.ejemplo.nettycoon.domain.model.Ataque
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
+import com.ejemplo.nettycoon.domain.model.DatosGeoIp
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/**
+ * Fake de [GeoIpRepository] para tests JVM (sin red). Devuelve siempre el [GeoIpResultado]
+ * que se le configure. Aprovecha que el repo es `open` (mismo patrón de repos concretos,
+ * sin interfaz).
+ */
+private class FakeGeoIpRepository(
+    private val resultado: GeoIpResultado,
+) : GeoIpRepository() {
+    override suspend fun consultar(ip: String): GeoIpResultado = resultado
+}
 
 /**
  * Unit tests JVM del [ProcesarAtaqueUseCase]. Se construyen los repositorios REALES sobre
@@ -26,7 +41,10 @@ class ProcesarAtaqueUseCaseTest {
 
     private val uid = "uid-1"
 
-    private fun useCase(reglas: List<ReglaFirewall>): Triple<ProcesarAtaqueUseCase, FakeEventoAtaqueDao, FakeEstadoPartidaDao> {
+    private fun useCase(
+        reglas: List<ReglaFirewall>,
+        geoIp: GeoIpResultado = GeoIpResultado.Error("sin red"),
+    ): Triple<ProcesarAtaqueUseCase, FakeEventoAtaqueDao, FakeEstadoPartidaDao> {
         val reglaDao = FakeReglaFirewallDao(reglas)
         val eventoDao = FakeEventoAtaqueDao()
         val partidaDao = FakeEstadoPartidaDao()
@@ -34,6 +52,9 @@ class ProcesarAtaqueUseCaseTest {
             reglaRepo = ReglaFirewallRepository(reglaDao),
             eventoRepo = EventoAtaqueRepository(eventoDao),
             partidaRepo = PartidaRepository(partidaDao),
+            // Por defecto la geo-IP FALLA → pais/isp null: así los tests existentes ven el
+            // mismo comportamiento que conocían.
+            geoIpRepo = FakeGeoIpRepository(geoIp),
         )
         return Triple(uc, eventoDao, partidaDao)
     }
@@ -100,5 +121,40 @@ class ProcesarAtaqueUseCaseTest {
 
         // La ALLOW inactiva no aplica; default-DENY -> bloqueo correcto.
         assertEquals(AccionFirewall.DENY, ronda.evaluacion.accionAplicada)
+    }
+
+    @Test
+    fun `geo-IP con exito rellena pais e isp en el evento`() = runBlocking {
+        val geo = GeoIpResultado.Exito(DatosGeoIp(pais = "Colombia", isp = "ISP X"))
+        val (uc, eventoDao, _) = useCase(emptyList(), geoIp = geo)
+        val ataque = Ataque("9.9.9.9", puertoDestino = 443, esMalicioso = true)
+
+        val ronda = uc.ejecutarRonda(uid, ataque)
+
+        val ev = eventoDao.insertados.single()
+        assertEquals("Colombia", ev.pais)
+        assertEquals("ISP X", ev.isp)
+        // La ronda se resuelve con normalidad.
+        assertEquals("Colombia", ronda.evento.pais)
+        assertTrue(ronda.evaluacion.acierto)
+    }
+
+    @Test
+    fun `geo-IP con fallo deja pais e isp null y la ronda continua normal`() = runBlocking {
+        val (uc, eventoDao, partidaDao) = useCase(
+            emptyList(),
+            geoIp = GeoIpResultado.Error("Error de red"),
+        )
+        val ataque = Ataque("8.8.8.8", puertoDestino = 80, esMalicioso = true)
+
+        val ronda = uc.ejecutarRonda(uid, ataque)
+
+        // Sin geo: pais/isp null, pero el evento se persiste igual.
+        val ev = eventoDao.insertados.single()
+        assertNull(ev.pais)
+        assertNull(ev.isp)
+        // Evaluación y partida intactas (default-DENY sobre ataque malicioso = acierto).
+        assertEquals(CategoriaResultado.BLOQUEO_CORRECTO, ronda.evaluacion.categoria)
+        assertEquals(ronda.estadoPartida, partidaDao.almacen[uid])
     }
 }

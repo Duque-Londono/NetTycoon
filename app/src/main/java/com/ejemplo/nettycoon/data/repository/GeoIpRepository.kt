@@ -16,10 +16,10 @@ import java.io.IOException
  * - HTTP 200 con `success=false` → Error con el `message` de ipwho.is.
  * - `success=true` → [GeoIpResultado.Exito] con [DatosGeoIp].
  */
-class GeoIpRepository(
+open class GeoIpRepository(
     private val api: GeoIpApiService = RetrofitProvider.geoIpApiService,
 ) {
-    suspend fun consultar(ip: String): GeoIpResultado =
+    open suspend fun consultar(ip: String): GeoIpResultado =
         try {
             val dto = api.consultarIp(ip)
             if (dto.success) {
