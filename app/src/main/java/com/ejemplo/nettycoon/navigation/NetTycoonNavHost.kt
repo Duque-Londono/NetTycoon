@@ -3,6 +3,7 @@ package com.ejemplo.nettycoon.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -14,7 +15,9 @@ import com.ejemplo.nettycoon.auth.AuthViewModel
 import com.ejemplo.nettycoon.auth.AuthViewModelFactory
 import com.ejemplo.nettycoon.ui.login.LoginScreen
 import com.ejemplo.nettycoon.ui.login.RegistroScreen
-import com.ejemplo.nettycoon.ui.network.HomeScreen
+import com.ejemplo.nettycoon.ui.panel.PanelScreen
+import com.ejemplo.nettycoon.ui.panel.PanelViewModel
+import com.ejemplo.nettycoon.ui.panel.PanelViewModelFactory
 
 /**
  * NavHost raíz de NetTycoon con el gate condicional de autenticación.
@@ -76,7 +79,16 @@ fun NetTycoonNavHost(
         }
 
         composable(Rutas.Home.ruta) {
-            HomeScreen(
+            val context = LocalContext.current.applicationContext
+            // El uid lo aporta la sesión ya existente (el ViewModel no consulta Firebase).
+            // Fallback "dev-local" solo aplica al bypass de desarrollo, que está candado a
+            // BuildConfig.DEBUG en LoginScreen: en release nunca se entra sin sesión.
+            val uid = repositorio.usuarioActual?.uid ?: "dev-local"
+            val panelViewModel: PanelViewModel = viewModel(
+                factory = PanelViewModelFactory(context, uid),
+            )
+            PanelScreen(
+                viewModel = panelViewModel,
                 onCerrarSesion = {
                     authViewModel.cerrarSesion()
                     authViewModel.consumirExito()
