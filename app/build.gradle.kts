@@ -79,6 +79,8 @@ dependencies {
     testImplementation(libs.junit)
     // Servidor HTTP simulado para probar la capa de red sin pegarle a la red real.
     testImplementation(libs.okhttp.mockwebserver)
+    // Permite probar ViewModels con corrutinas en la JVM (runTest + dispatcher controlado).
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
