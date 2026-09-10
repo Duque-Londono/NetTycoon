@@ -17,9 +17,10 @@ import kotlinx.coroutines.launch
  * **No conoce Firebase ni Auth:** recibe el [uid] ya resuelto por la raíz de composición (que
  * posee la sesión), así que no duplica la lógica de sesión.
  *
- * **Política por defecto (default-DENY):** en esta fase no hay UI para crear reglas de firewall,
- * de modo que el motor evalúa cada ataque con la política por defecto (bloquear lo no permitido).
- * Es intencional; el CRUD de reglas llega en una fase posterior.
+ * **Reglas del jugador:** el caso de uso lee en cada ronda las reglas activas del `uid`
+ * (`ReglaFirewallRepository.obtenerReglasActivas`), así que lo que el jugador cree en la pantalla
+ * de reglas cambia de inmediato el resultado de [simularAtaque]. Si aún no hay ninguna regla
+ * activa, el motor aplica la política por defecto (DENY, el estándar seguro de firewall).
  */
 class PanelViewModel(
     private val uid: String,
@@ -54,7 +55,8 @@ class PanelViewModel(
 
     /**
      * Ejecuta una ronda: genera un ataque, lo enriquece con geo-IP (best-effort dentro del
-     * caso de uso), lo evalúa con la política por defecto y persiste el resultado. Modela
+     * caso de uso), lo evalúa con las reglas activas del jugador (o la política por defecto si
+     * no tiene ninguna) y persiste el resultado. Modela
      * Cargando → Éxito/Error. Si ya hay una ronda en curso, no hace nada.
      */
     fun simularAtaque() {

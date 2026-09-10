@@ -14,6 +14,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,14 +40,15 @@ import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
  *
  * Muestra el estado de la partida, un botón para simular un ataque (que ejecuta una ronda real
  * vía `ProcesarAtaqueUseCase`) y el resultado de la última ronda, con estados de UI visibles
- * (Cargando / Error). Sin CRUD de reglas ni configuración de red todavía: el motor opera con la
- * política por defecto (default-DENY).
+ * (Cargando / Error). Desde aquí se accede también a la pantalla de reglas, cuyas reglas activas
+ * usa el motor al simular; sin ninguna regla, aplica la política por defecto (DENY).
  *
  * Punto de entrada con estado (conectado al ViewModel).
  */
 @Composable
 fun PanelScreen(
     viewModel: PanelViewModel,
+    onIrAReglas: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -55,6 +57,7 @@ fun PanelScreen(
         estado = estado,
         onSimularAtaque = viewModel::simularAtaque,
         onLimpiarError = viewModel::limpiarError,
+        onIrAReglas = onIrAReglas,
         onCerrarSesion = onCerrarSesion,
         modifier = modifier,
     )
@@ -67,6 +70,7 @@ fun PanelScreen(
     estado: PanelUiState,
     onSimularAtaque: () -> Unit,
     onLimpiarError: () -> Unit,
+    onIrAReglas: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,6 +101,13 @@ fun PanelScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Simular ataque")
+            }
+
+            OutlinedButton(
+                onClick = onIrAReglas,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Mis reglas")
             }
 
             if (estado.cargando) {
@@ -256,6 +267,7 @@ private fun PanelScreenPreview() {
             ),
             onSimularAtaque = {},
             onLimpiarError = {},
+            onIrAReglas = {},
             onCerrarSesion = {},
         )
     }
@@ -272,6 +284,7 @@ private fun PanelScreenCargandoPreview() {
             ),
             onSimularAtaque = {},
             onLimpiarError = {},
+            onIrAReglas = {},
             onCerrarSesion = {},
         )
     }
