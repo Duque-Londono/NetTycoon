@@ -40,8 +40,8 @@ import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
  *
  * Muestra el estado de la partida, un botón para simular un ataque (que ejecuta una ronda real
  * vía `ProcesarAtaqueUseCase`) y el resultado de la última ronda, con estados de UI visibles
- * (Cargando / Error). Sin CRUD de reglas ni configuración de red todavía: el motor opera con la
- * política por defecto (default-DENY).
+ * (Cargando / Error). Desde aquí se accede también a la pantalla de reglas, cuyas reglas activas
+ * usa el motor al simular; sin ninguna regla, aplica la política por defecto (DENY).
  *
  * Punto de entrada con estado (conectado al ViewModel).
  */
