@@ -49,6 +49,7 @@ import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 fun PanelScreen(
     viewModel: PanelViewModel,
     onIrAReglas: () -> Unit,
+    onIrAConfigRed: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,6 +59,7 @@ fun PanelScreen(
         onSimularAtaque = viewModel::simularAtaque,
         onLimpiarError = viewModel::limpiarError,
         onIrAReglas = onIrAReglas,
+        onIrAConfigRed = onIrAConfigRed,
         onCerrarSesion = onCerrarSesion,
         modifier = modifier,
     )
@@ -71,6 +73,7 @@ fun PanelScreen(
     onSimularAtaque: () -> Unit,
     onLimpiarError: () -> Unit,
     onIrAReglas: () -> Unit,
+    onIrAConfigRed: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,6 +111,13 @@ fun PanelScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Mis reglas")
+            }
+
+            OutlinedButton(
+                onClick = onIrAConfigRed,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Configurar red")
             }
 
             if (estado.cargando) {
@@ -268,6 +278,7 @@ private fun PanelScreenPreview() {
             onSimularAtaque = {},
             onLimpiarError = {},
             onIrAReglas = {},
+            onIrAConfigRed = {},
             onCerrarSesion = {},
         )
     }
@@ -285,6 +296,7 @@ private fun PanelScreenCargandoPreview() {
             onSimularAtaque = {},
             onLimpiarError = {},
             onIrAReglas = {},
+            onIrAConfigRed = {},
             onCerrarSesion = {},
         )
     }
