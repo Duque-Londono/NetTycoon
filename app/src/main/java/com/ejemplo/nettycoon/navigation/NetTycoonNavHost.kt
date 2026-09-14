@@ -20,6 +20,9 @@ import com.ejemplo.nettycoon.ui.firewall.FirewallViewModel
 import com.ejemplo.nettycoon.ui.firewall.FirewallViewModelFactory
 import com.ejemplo.nettycoon.ui.login.LoginScreen
 import com.ejemplo.nettycoon.ui.login.RegistroScreen
+import com.ejemplo.nettycoon.ui.network.ConfigRedScreen
+import com.ejemplo.nettycoon.ui.network.ConfigRedViewModel
+import com.ejemplo.nettycoon.ui.network.ConfigRedViewModelFactory
 import com.ejemplo.nettycoon.ui.panel.PanelScreen
 import com.ejemplo.nettycoon.ui.panel.PanelViewModel
 import com.ejemplo.nettycoon.ui.panel.PanelViewModelFactory
@@ -96,6 +99,7 @@ fun NetTycoonNavHost(
             PanelScreen(
                 viewModel = panelViewModel,
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
+                onIrAConfigRed = { navController.navigate(Rutas.ConfigRed.crearRuta(uid)) },
                 onCerrarSesion = {
                     authViewModel.cerrarSesion()
                     authViewModel.consumirExito()
@@ -119,6 +123,23 @@ fun NetTycoonNavHost(
             )
             FirewallScreen(
                 viewModel = firewallViewModel,
+                onVolver = { navController.popBackStack() },
+            )
+        }
+
+        // Destino con argumento de ruta (mismo patrón que Firewall): el uid viaja en la ruta,
+        // así la pantalla es autocontenida y su ViewModel no necesita consultar Firebase.
+        composable(
+            route = Rutas.ConfigRed.ruta,
+            arguments = listOf(navArgument(Rutas.ARG_UID) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val context = LocalContext.current.applicationContext
+            val uid = backStackEntry.arguments?.getString(Rutas.ARG_UID).orEmpty()
+            val configRedViewModel: ConfigRedViewModel = viewModel(
+                factory = ConfigRedViewModelFactory(context, uid),
+            )
+            ConfigRedScreen(
+                viewModel = configRedViewModel,
                 onVolver = { navController.popBackStack() },
             )
         }
