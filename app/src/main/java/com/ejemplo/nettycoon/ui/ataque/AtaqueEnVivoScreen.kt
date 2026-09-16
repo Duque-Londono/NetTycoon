@@ -49,6 +49,9 @@ fun AtaqueEnVivoScreen(
     val estado by viewModel.estado.collectAsStateWithLifecycle()
     AtaqueEnVivoScreen(
         estado = estado,
+        onElegirNivel = viewModel::elegirNivel,
+        onCambiarNivel = viewModel::cambiarNivel,
+        onReciclarNivel = viewModel::reciclarNivel,
         onPermitir = viewModel::onPermitir,
         onBloquear = viewModel::onBloquear,
         onSiguienteAtaque = viewModel::onSiguienteAtaque,
@@ -64,6 +67,9 @@ fun AtaqueEnVivoScreen(
 @Composable
 fun AtaqueEnVivoScreen(
     estado: AtaqueEnVivoUiState,
+    onElegirNivel: (Dificultad) -> Unit,
+    onCambiarNivel: () -> Unit,
+    onReciclarNivel: () -> Unit,
     onPermitir: () -> Unit,
     onBloquear: () -> Unit,
     onSiguienteAtaque: () -> Unit,
@@ -91,41 +97,209 @@ fun AtaqueEnVivoScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
+            when {
+                // Selector de nivel: aún no se ha elegido dificultad.
+                estado.nivel == null -> SelectorNivel(onElegirNivel = onElegirNivel)
 
-            TarjetaSituacion(escenario = estado.escenario)
-            TarjetaPista(pista = estado.escenario.textoPista)
+                // Nivel completado: se agotaron los escenarios del nivel.
+                estado.nivelCompletado -> {
+                    CabeceraNivel(nivel = estado.nivel, onCambiarNivel = onCambiarNivel)
+                    TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
+                    TarjetaNivelCompletado(
+                        aciertos = estado.aciertos,
+                        rondas = estado.rondas,
+                        onReciclarNivel = onReciclarNivel,
+                        onCambiarNivel = onCambiarNivel,
+                    )
+                }
 
-            if (estado.cargando) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator()
+                // Jugando: hay un escenario que decidir.
+                estado.escenario != null -> {
+                    val escenario = estado.escenario
+                    CabeceraNivel(nivel = estado.nivel, onCambiarNivel = onCambiarNivel)
+                    TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
+
+                    TarjetaSituacion(escenario = escenario)
+                    TarjetaPista(pista = escenario.textoPista)
+
+                    if (estado.cargando) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+
+                    estado.error?.let { mensaje ->
+                        TarjetaError(mensaje = mensaje, onLimpiarError = onLimpiarError)
+                    }
+
+                    val resultado = estado.ultimoResultado
+                    if (resultado == null) {
+                        BotonesDecision(
+                            habilitado = !estado.cargando && estado.partida != null,
+                            onPermitir = onPermitir,
+                            onBloquear = onBloquear,
+                        )
+                    } else {
+                        TarjetaVeredicto(resultado = resultado)
+                        resultado.sugerencia?.let { sugerencia ->
+                            TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+                        }
+                        Button(
+                            onClick = onSiguienteAtaque,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Siguiente ataque")
+                        }
+                    }
                 }
             }
+        }
+    }
+}
 
-            estado.error?.let { mensaje ->
-                TarjetaError(mensaje = mensaje, onLimpiarError = onLimpiarError)
-            }
+/** Nombre humano de cada nivel para mostrar al jugador. */
+private fun Dificultad.etiqueta(): String = when (this) {
+    Dificultad.FACIL -> "Fácil"
+    Dificultad.MEDIO -> "Medio"
+    Dificultad.DIFICIL -> "Difícil"
+}
 
-            val resultado = estado.ultimoResultado
-            if (resultado == null) {
-                BotonesDecision(
-                    habilitado = !estado.cargando && estado.partida != null,
-                    onPermitir = onPermitir,
-                    onBloquear = onBloquear,
-                )
-            } else {
-                TarjetaVeredicto(resultado = resultado)
-                resultado.sugerencia?.let { sugerencia ->
-                    TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+/**
+ * Selector inicial: el jugador elige el nivel. Cada opción trae una línea que explica, en lenguaje
+ * de novato, qué tipo de casos verá, para que la elección sea informada y no a ciegas.
+ */
+@Composable
+private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifier = Modifier) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "Elige tu nivel",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Empieza por el nivel que quieras. Dentro de cada uno, los casos van de lo más " +
+                    "claro a lo más engañoso a medida que avanzas.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OpcionNivel(
+                titulo = "Fácil",
+                descripcion = "Casos claros para empezar: distingue lo normal de lo peligroso.",
+                onClick = { onElegirNivel(Dificultad.FACIL) },
+            )
+            OpcionNivel(
+                titulo = "Medio",
+                descripcion = "Servicios sensibles y protocolos viejos: ya toca pensar un poco.",
+                onClick = { onElegirNivel(Dificultad.MEDIO) },
+            )
+            OpcionNivel(
+                titulo = "Difícil",
+                descripcion = "Casos con trampa: lo que parece sospechoso puede ser legítimo (y al revés).",
+                onClick = { onElegirNivel(Dificultad.DIFICIL) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun OpcionNivel(
+    titulo: String,
+    descripcion: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(descripcion, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** Cabecera con el nivel actual y un botón para volver al selector. */
+@Composable
+private fun CabeceraNivel(
+    nivel: Dificultad,
+    onCambiarNivel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Nivel: ${nivel.etiqueta()}",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        TextButton(onClick = onCambiarNivel) { Text("Cambiar nivel") }
+    }
+}
+
+/** Aviso al agotar el nivel: felicita y ofrece repetir o cambiar de nivel (no en silencio). */
+@Composable
+private fun TarjetaNivelCompletado(
+    aciertos: Int,
+    rondas: Int,
+    onReciclarNivel: () -> Unit,
+    onCambiarNivel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "🎉 ¡Completaste este nivel!",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Terminaste todos los casos del nivel con $aciertos aciertos de $rondas.",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Button(onClick = onReciclarNivel, modifier = Modifier.weight(1f)) {
+                    Text("Repetir nivel")
                 }
                 Button(
-                    onClick = onSiguienteAtaque,
-                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onCambiarNivel,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary,
+                        contentColor = MaterialTheme.colorScheme.onSecondary,
+                    ),
                 ) {
-                    Text("Siguiente ataque")
+                    Text("Cambiar nivel")
                 }
             }
         }
@@ -365,11 +539,13 @@ private fun AtaqueEnVivoSinDecidirPreview() {
         AtaqueEnVivoScreen(
             estado = AtaqueEnVivoUiState(
                 escenario = escenarioDemoMalicioso,
+                nivel = Dificultad.MEDIO,
                 partida = EstadoPartida(owner = "demo"),
                 cargando = false,
                 aciertos = 2,
                 rondas = 3,
             ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
@@ -383,6 +559,7 @@ private fun AtaqueEnVivoAciertoPermitirPreview() {
         AtaqueEnVivoScreen(
             estado = AtaqueEnVivoUiState(
                 escenario = escenarioDemoLegitimo,
+                nivel = Dificultad.FACIL,
                 partida = EstadoPartida(owner = "demo"),
                 cargando = false,
                 aciertos = 3,
@@ -397,6 +574,7 @@ private fun AtaqueEnVivoAciertoPermitirPreview() {
                     deltaDinero = 50,
                 ),
             ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
@@ -410,6 +588,7 @@ private fun AtaqueEnVivoFalloPreview() {
         AtaqueEnVivoScreen(
             estado = AtaqueEnVivoUiState(
                 escenario = escenarioDemoMalicioso,
+                nivel = Dificultad.MEDIO,
                 partida = EstadoPartida(owner = "demo"),
                 cargando = false,
                 aciertos = 1,
@@ -424,6 +603,7 @@ private fun AtaqueEnVivoFalloPreview() {
                     deltaDinero = -100,
                 ),
             ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
@@ -437,6 +617,7 @@ private fun AtaqueEnVivoConSugerenciaPreview() {
         AtaqueEnVivoScreen(
             estado = AtaqueEnVivoUiState(
                 escenario = escenarioDemoMalicioso,
+                nivel = Dificultad.MEDIO,
                 partida = EstadoPartida(owner = "demo"),
                 cargando = false,
                 aciertos = 3,
@@ -461,6 +642,40 @@ private fun AtaqueEnVivoConSugerenciaPreview() {
                     ),
                 ),
             ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Selector de nivel")
+@Composable
+private fun AtaqueEnVivoSelectorPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(cargando = false),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Nivel completado")
+@Composable
+private fun AtaqueEnVivoNivelCompletadoPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                nivel = Dificultad.FACIL,
+                nivelCompletado = true,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 7,
+                rondas = 9,
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )

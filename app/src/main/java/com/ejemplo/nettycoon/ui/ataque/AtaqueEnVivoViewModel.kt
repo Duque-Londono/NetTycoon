@@ -28,39 +28,48 @@ import kotlinx.coroutines.launch
  * del jugador y delega el cálculo de puntaje/salud/dinero/nivel en [ConsecuenciasPartida.aplicar].
  * Los escenarios NO vienen del generador aleatorio, sino de un catálogo pedagógico fijo.
  *
- * El [seleccionarSiguiente] elige el índice del próximo escenario a partir del actual (o `null` en
- * el arranque). Es inyectable para que los tests sean deterministas; por defecto es aleatorio sin
- * repetir el escenario inmediatamente anterior.
+ * **Niveles + progresión:** el jugador elige un [Dificultad] antes de jugar; el ViewModel sirve solo
+ * escenarios de ese nivel y avanza dentro de él con una PROGRESIÓN en memoria (del más simple al
+ * menos obvio, según el orden del catálogo). El [seleccionarSiguiente] elige el índice del próximo
+ * escenario DENTRO de la sublista del nivel, a partir del actual (o `null` al empezar el nivel) y del
+ * tamaño de esa sublista. Es inyectable para que los tests sean deterministas; por defecto avanza de
+ * forma secuencial. Si el índice devuelto queda fuera de rango, el nivel se marca completado.
+ *
+ * Toda la progresión (nivel, posición, contadores del puente) vive EN MEMORIA por sesión; no se
+ * persiste en Room (igual que el contador del puente).
  */
 class AtaqueEnVivoViewModel(
     private val uid: String,
     private val partidaRepo: PartidaRepository,
     private val eventoRepo: EventoAtaqueRepository,
     private val escenarios: List<EscenarioAtaque> = CatalogoAtaques.escenarios,
-    private val seleccionarSiguiente: (actual: Int?) -> Int = { actual ->
-        indiceAleatorioDistinto(escenarios.size, actual)
-    },
+    nivelInicial: Dificultad? = null,
+    private val seleccionarSiguiente: (actual: Int?, total: Int) -> Int = ::progresionSecuencial,
 ) : ViewModel() {
 
-    private var indiceActual: Int = seleccionarSiguiente(null)
+    /** Escenarios del nivel actualmente en juego, en orden de progresión (vacío en el selector). */
+    private var nivelEscenarios: List<EscenarioAtaque> = emptyList()
+
+    /** Posición del escenario actual dentro de [nivelEscenarios]. */
+    private var posicion: Int = 0
 
     /**
      * Contador EN MEMORIA (de sesión, no se persiste) de cuántas veces el jugador ha ACERTADO la
      * misma decisión sobre el mismo puerto. Solo se cuentan aciertos: no queremos sugerir
-     * automatizar un error. Se pierde al salir de la pantalla (el ViewModel se destruye).
+     * automatizar un error. Se pierde al salir de la pantalla (el ViewModel se destruye) y se
+     * reinicia al cambiar de nivel.
      */
     private val aciertosPorPatron = mutableMapOf<Pair<Int, AccionFirewall>, Int>()
 
     /** Patrones para los que ya se mostró la sugerencia, para no repetirla en la sesión. */
     private val patronesYaSugeridos = mutableSetOf<Pair<Int, AccionFirewall>>()
 
-    private val _estado = MutableStateFlow(
-        AtaqueEnVivoUiState(escenario = escenarios[indiceActual]),
-    )
+    private val _estado = MutableStateFlow(AtaqueEnVivoUiState())
     val estado: StateFlow<AtaqueEnVivoUiState> = _estado.asStateFlow()
 
     init {
         cargarPartida()
+        nivelInicial?.let { iniciarNivel(it) }
     }
 
     /** Carga (o crea) la partida del usuario para mostrar métricas y aplicarles consecuencias. */
@@ -75,6 +84,65 @@ class AtaqueEnVivoViewModel(
                     it.copy(cargando = false, error = mensajeDeError("cargar la partida", e))
                 }
             }
+        }
+    }
+
+    /**
+     * El jugador elige un nivel de dificultad: empieza a jugar solo con los escenarios de ese
+     * nivel, desde el más simple. Reinicia los contadores y el puente para un arranque limpio.
+     */
+    fun elegirNivel(nivel: Dificultad) = iniciarNivel(nivel)
+
+    /** Reinicia el nivel actual desde el primer escenario (tras completarlo o para repetirlo). */
+    fun reciclarNivel() {
+        _estado.value.nivel?.let { iniciarNivel(it) }
+    }
+
+    /** Vuelve al selector de nivel (sin escenario activo). */
+    fun cambiarNivel() {
+        nivelEscenarios = emptyList()
+        _estado.update {
+            it.copy(
+                nivel = null,
+                escenario = null,
+                nivelCompletado = false,
+                ultimoResultado = null,
+                aciertos = 0,
+                rondas = 0,
+            )
+        }
+    }
+
+    /**
+     * Prepara y arranca un nivel: filtra el catálogo por [nivel] (conservando el orden del catálogo
+     * = de más simple a menos obvio), reinicia contadores y el puente, y carga el primer escenario.
+     */
+    private fun iniciarNivel(nivel: Dificultad) {
+        nivelEscenarios = escenarios.filter { it.dificultad == nivel }
+        aciertosPorPatron.clear()
+        patronesYaSugeridos.clear()
+
+        if (nivelEscenarios.isEmpty()) {
+            // Defensa: un nivel sin escenarios se trata como completado (no ocurre con el catálogo).
+            _estado.update {
+                it.copy(
+                    nivel = nivel, escenario = null, nivelCompletado = true,
+                    ultimoResultado = null, aciertos = 0, rondas = 0,
+                )
+            }
+            return
+        }
+
+        posicion = seleccionarSiguiente(null, nivelEscenarios.size)
+        _estado.update {
+            it.copy(
+                nivel = nivel,
+                escenario = nivelEscenarios[posicion],
+                nivelCompletado = false,
+                ultimoResultado = null,
+                aciertos = 0,
+                rondas = 0,
+            )
         }
     }
 
@@ -93,7 +161,7 @@ class AtaqueEnVivoViewModel(
         val actual = _estado.value
         if (actual.decisionTomada || actual.cargando) return
         val partida = actual.partida ?: return
-        val escenario = actual.escenario
+        val escenario = actual.escenario ?: return
 
         val bloquear = accion == AccionFirewall.DENY
         // acierto = (malicioso && bloquear) || (legítimo && permitir).
@@ -195,11 +263,22 @@ class AtaqueEnVivoViewModel(
         )
     }
 
-    /** Trae el siguiente escenario y limpia el veredicto para volver a la fase de decisión. */
+    /**
+     * Avanza al siguiente escenario del nivel y limpia el veredicto. Si el selector devuelve un
+     * índice fuera de rango (progresión agotada), marca el nivel como completado.
+     */
     fun onSiguienteAtaque() {
-        indiceActual = seleccionarSiguiente(indiceActual)
+        if (nivelEscenarios.isEmpty()) return
+        val siguiente = seleccionarSiguiente(posicion, nivelEscenarios.size)
+        if (siguiente !in nivelEscenarios.indices) {
+            _estado.update {
+                it.copy(escenario = null, ultimoResultado = null, nivelCompletado = true)
+            }
+            return
+        }
+        posicion = siguiente
         _estado.update {
-            it.copy(escenario = escenarios[indiceActual], ultimoResultado = null)
+            it.copy(escenario = nivelEscenarios[siguiente], ultimoResultado = null)
         }
     }
 
@@ -220,14 +299,11 @@ class AtaqueEnVivoViewModel(
             else -> CategoriaResultado.PERMISO_CORRECTO
         }
 
-        /** Índice al azar en [0, tamano) distinto de [actual] cuando hay más de un escenario. */
-        fun indiceAleatorioDistinto(tamano: Int, actual: Int?): Int {
-            if (tamano <= 1) return 0
-            var siguiente: Int
-            do {
-                siguiente = (0 until tamano).random()
-            } while (siguiente == actual)
-            return siguiente
-        }
+        /**
+         * Progresión secuencial por defecto: empieza en 0 (el más simple del nivel) y avanza uno a
+         * uno. Devuelve [total] (fuera de rango) al pasar del último, señal para completar el nivel.
+         */
+        fun progresionSecuencial(actual: Int?, total: Int): Int =
+            if (actual == null) 0 else minOf(actual + 1, total)
     }
 }

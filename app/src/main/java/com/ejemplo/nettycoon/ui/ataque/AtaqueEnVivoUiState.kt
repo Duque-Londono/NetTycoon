@@ -7,16 +7,27 @@ import com.ejemplo.nettycoon.domain.model.CategoriaResultado
 /**
  * Estado de UI de la pantalla "Ataque en vivo".
  *
- * - [escenario]: el escenario que el jugador está viendo ahora.
+ * Modela tres momentos según [nivel] / [escenario] / [nivelCompletado]:
+ * - **Selector de nivel** ([nivel] `== null`): el jugador aún no ha elegido dificultad; no hay
+ *   escenario activo ([escenario] `== null`).
+ * - **Jugando** ([nivel] `!= null` y [escenario] `!= null`): hay un escenario que decidir.
+ * - **Nivel completado** ([nivel] `!= null` y [nivelCompletado] `== true`): se agotaron los
+ *   escenarios del nivel; se ofrece repetir o cambiar de nivel.
+ *
+ * - [escenario]: el escenario que el jugador está viendo ahora, o `null` (selector/completado).
+ * - [nivel]: dificultad elegida, o `null` mientras se elige.
+ * - [nivelCompletado]: `true` cuando ya no quedan escenarios en el nivel actual.
  * - [partida]: estado actual de la partida (para mostrar métricas y aplicarles consecuencias).
  * - [ultimoResultado]: veredicto de la decisión tomada sobre [escenario], o `null` si el jugador
  *   aún no ha decidido (fase de "situación + pista").
- * - [aciertos] / [rondas]: contador visible de progreso pedagógico.
+ * - [aciertos] / [rondas]: contador visible de progreso pedagógico (se reinicia al cambiar de nivel).
  * - [cargando]: `true` durante la carga inicial de la partida.
  * - [error]: mensaje a mostrar si algo falla (persistencia), o `null`.
  */
 data class AtaqueEnVivoUiState(
-    val escenario: EscenarioAtaque,
+    val escenario: EscenarioAtaque? = null,
+    val nivel: Dificultad? = null,
+    val nivelCompletado: Boolean = false,
     val partida: EstadoPartida? = null,
     val ultimoResultado: ResultadoDecision? = null,
     val aciertos: Int = 0,
