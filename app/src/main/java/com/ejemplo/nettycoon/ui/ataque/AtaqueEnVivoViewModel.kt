@@ -44,6 +44,16 @@ class AtaqueEnVivoViewModel(
 
     private var indiceActual: Int = seleccionarSiguiente(null)
 
+    /**
+     * Contador EN MEMORIA (de sesión, no se persiste) de cuántas veces el jugador ha ACERTADO la
+     * misma decisión sobre el mismo puerto. Solo se cuentan aciertos: no queremos sugerir
+     * automatizar un error. Se pierde al salir de la pantalla (el ViewModel se destruye).
+     */
+    private val aciertosPorPatron = mutableMapOf<Pair<Int, AccionFirewall>, Int>()
+
+    /** Patrones para los que ya se mostró la sugerencia, para no repetirla en la sesión. */
+    private val patronesYaSugeridos = mutableSetOf<Pair<Int, AccionFirewall>>()
+
     private val _estado = MutableStateFlow(
         AtaqueEnVivoUiState(escenario = escenarios[indiceActual]),
     )
@@ -103,6 +113,8 @@ class AtaqueEnVivoViewModel(
         val ahora = System.currentTimeMillis()
         val actualizada = ConsecuenciasPartida.aplicar(partida, evaluacion, ahora)
 
+        val sugerencia = calcularSugerencia(escenario, accion, acierto)
+
         val veredicto = ResultadoDecision(
             acierto = acierto,
             categoria = categoria,
@@ -111,6 +123,7 @@ class AtaqueEnVivoViewModel(
             deltaPuntaje = actualizada.puntaje - partida.puntaje,
             deltaSalud = actualizada.saludRed - partida.saludRed,
             deltaDinero = actualizada.dineroVirtual - partida.dineroVirtual,
+            sugerencia = sugerencia,
         )
 
         // Publicamos el veredicto de inmediato (feedback inmediato al jugador) y persistimos.
@@ -146,6 +159,42 @@ class AtaqueEnVivoViewModel(
         }
     }
 
+    /**
+     * Lógica del "puente" hacia las reglas: cuenta EN MEMORIA los aciertos repetidos del mismo
+     * patrón (puerto + acción) y, al alcanzar [UMBRAL_SUGERENCIA] por primera vez, devuelve una
+     * [SugerenciaRegla] explicativa. Devuelve `null` si la decisión fue un error (no se cuenta) o
+     * si el patrón aún no llega al umbral o ya se sugirió antes en esta sesión.
+     */
+    private fun calcularSugerencia(
+        escenario: EscenarioAtaque,
+        accion: AccionFirewall,
+        acierto: Boolean,
+    ): SugerenciaRegla? {
+        if (!acierto) return null
+
+        val patron = escenario.puerto to accion
+        val conteo = (aciertosPorPatron[patron] ?: 0) + 1
+        aciertosPorPatron[patron] = conteo
+
+        if (conteo < UMBRAL_SUGERENCIA || patron in patronesYaSugeridos) return null
+        patronesYaSugeridos.add(patron)
+
+        val bloquear = accion == AccionFirewall.DENY
+        val verbo = if (bloquear) "bloqueado" else "permitido"
+        val accionTexto = if (bloquear) "Bloquear" else "Permitir"
+        val texto = "Has $verbo el puerto ${escenario.puerto} (${escenario.servicioNombre}) " +
+            "$conteo veces y siempre acertaste. Cuando reconoces un patrón, puedes crear una " +
+            "REGLA para que el firewall lo haga solo, sin que tengas que decidirlo cada vez. " +
+            "Ve a 'Mis reglas' y crea una regla: puerto ${escenario.puerto}, acción $accionTexto."
+
+        return SugerenciaRegla(
+            puerto = escenario.puerto,
+            servicio = escenario.servicioNombre,
+            accionTexto = accionTexto,
+            texto = texto,
+        )
+    }
+
     /** Trae el siguiente escenario y limpia el veredicto para volver a la fase de decisión. */
     fun onSiguienteAtaque() {
         indiceActual = seleccionarSiguiente(indiceActual)
@@ -161,6 +210,9 @@ class AtaqueEnVivoViewModel(
         "No se pudo $accion: ${e.message ?: "error desconocido"}."
 
     private companion object {
+        /** Aciertos repetidos del mismo patrón (puerto + acción) que disparan la sugerencia. */
+        const val UMBRAL_SUGERENCIA = 3
+
         fun categoriaDe(esMalicioso: Boolean, bloquear: Boolean): CategoriaResultado = when {
             esMalicioso && bloquear -> CategoriaResultado.BLOQUEO_CORRECTO
             esMalicioso && !bloquear -> CategoriaResultado.BRECHA
