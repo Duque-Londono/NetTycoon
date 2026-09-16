@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -232,5 +233,97 @@ class AtaqueEnVivoViewModelTest {
         assertEquals(legitimo, vm.estado.value.escenario)
         assertNull(vm.estado.value.ultimoResultado)
         assertFalse(vm.estado.value.decisionTomada)
+    }
+
+    // --- Fase 2: puente hacia las reglas (sugerencia en memoria) ---
+
+    @Test
+    fun `tras 3 aciertos del mismo patron aparece la sugerencia (no antes)`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // Escenario único: selector determinista que siempre devuelve 0 (mismo puerto/decisión).
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { 0 })
+        advanceUntilIdle()
+
+        // Ronda 1 y 2: sin sugerencia todavía.
+        vm.onBloquear()
+        advanceUntilIdle()
+        assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+
+        vm.onSiguienteAtaque()
+        vm.onBloquear()
+        advanceUntilIdle()
+        assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+
+        // Ronda 3: alcanza el umbral → aparece la sugerencia del patrón (puerto 22, Bloquear).
+        vm.onSiguienteAtaque()
+        vm.onBloquear()
+        advanceUntilIdle()
+        val sugerencia = vm.estado.value.ultimoResultado!!.sugerencia
+        assertNotNull(sugerencia)
+        assertEquals(22, sugerencia!!.puerto)
+        assertEquals("Bloquear", sugerencia.accionTexto)
+    }
+
+    @Test
+    fun `un patron con errores nunca sugiere automatizar`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // Legítimo + Bloquear = falso positivo (error) repetido: no debe contar ni sugerir.
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(legitimo), seleccionar = { 0 })
+        advanceUntilIdle()
+
+        repeat(4) {
+            vm.onBloquear()
+            advanceUntilIdle()
+            assertFalse(vm.estado.value.ultimoResultado!!.acierto)
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+            vm.onSiguienteAtaque()
+        }
+    }
+
+    @Test
+    fun `la sugerencia no se repite para el mismo patron`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { 0 })
+        advanceUntilIdle()
+
+        // Llega al umbral en la 3ª (sugerencia presente).
+        repeat(3) {
+            vm.onBloquear()
+            advanceUntilIdle()
+            vm.onSiguienteAtaque()
+        }
+        // 4º acierto del mismo patrón: ya se sugirió, no debe repetirse.
+        vm.onBloquear()
+        advanceUntilIdle()
+        assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+    }
+
+    @Test
+    fun `cada puerto lleva su propio conteo`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // Alterna puerto 22 (bloquear) y puerto 443 (permitir); ambos aciertos, patrones distintos.
+        val vm = crearViewModel(
+            partidaDao, eventoDao,
+            escenarios = listOf(malicioso, legitimo),
+            seleccionar = { actual -> if (actual == 0) 1 else 0 },
+        )
+        advanceUntilIdle()
+
+        // Secuencia: 22, 443, 22, 443, 22. El puerto 22 llega a 3; el 443 se queda en 2.
+        val sugerencias = mutableListOf<SugerenciaRegla?>()
+        repeat(5) {
+            if (vm.estado.value.escenario == malicioso) vm.onBloquear() else vm.onPermitir()
+            advanceUntilIdle()
+            sugerencias.add(vm.estado.value.ultimoResultado!!.sugerencia)
+            vm.onSiguienteAtaque()
+        }
+
+        // Solo la 5ª ronda (tercer acierto del puerto 22) dispara sugerencia.
+        assertNull(sugerencias[0])
+        assertNull(sugerencias[1])
+        assertNull(sugerencias[2])
+        assertNull(sugerencias[3])
+        assertNotNull(sugerencias[4])
+        assertEquals(22, sugerencias[4]!!.puerto)
     }
 }
