@@ -42,6 +42,7 @@ import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 @Composable
 fun AtaqueEnVivoScreen(
     viewModel: AtaqueEnVivoViewModel,
+    onIrAReglas: () -> Unit,
     onVolver: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -52,6 +53,7 @@ fun AtaqueEnVivoScreen(
         onBloquear = viewModel::onBloquear,
         onSiguienteAtaque = viewModel::onSiguienteAtaque,
         onLimpiarError = viewModel::limpiarError,
+        onIrAReglas = onIrAReglas,
         onVolver = onVolver,
         modifier = modifier,
     )
@@ -66,6 +68,7 @@ fun AtaqueEnVivoScreen(
     onBloquear: () -> Unit,
     onSiguienteAtaque: () -> Unit,
     onLimpiarError: () -> Unit,
+    onIrAReglas: () -> Unit,
     onVolver: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -115,6 +118,9 @@ fun AtaqueEnVivoScreen(
                 )
             } else {
                 TarjetaVeredicto(resultado = resultado)
+                resultado.sugerencia?.let { sugerencia ->
+                    TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+                }
                 Button(
                     onClick = onSiguienteAtaque,
                     modifier = Modifier.fillMaxWidth(),
@@ -267,6 +273,44 @@ private fun TarjetaVeredicto(resultado: ResultadoDecision, modifier: Modifier = 
     }
 }
 
+/**
+ * Tarjeta de "consejo": el puente hacia las reglas. Tono distinto del veredicto (que celebra o
+ * corrige) y de la pista (que informa antes de decidir): usa el color terciario para sentirse como
+ * un aprendizaje/mejora, no como un error. Solo enseña y ofrece ir al CRUD; no crea nada.
+ */
+@Composable
+private fun TarjetaSugerencia(
+    sugerencia: SugerenciaRegla,
+    onIrAReglas: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "🎓 Consejo: automatiza esto",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(sugerencia.texto, style = MaterialTheme.typography.bodyLarge)
+            Button(
+                onClick = onIrAReglas,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text("Ir a Mis reglas")
+            }
+        }
+    }
+}
+
 @Composable
 private fun TarjetaError(
     mensaje: String,
@@ -327,7 +371,7 @@ private fun AtaqueEnVivoSinDecidirPreview() {
                 rondas = 3,
             ),
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onVolver = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -354,7 +398,7 @@ private fun AtaqueEnVivoAciertoPermitirPreview() {
                 ),
             ),
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onVolver = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -381,7 +425,44 @@ private fun AtaqueEnVivoFalloPreview() {
                 ),
             ),
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onVolver = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Acierto con sugerencia")
+@Composable
+private fun AtaqueEnVivoConSugerenciaPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoMalicioso,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 3,
+                rondas = 3,
+                ultimoResultado = ResultadoDecision(
+                    acierto = true,
+                    categoria = CategoriaResultado.BLOQUEO_CORRECTO,
+                    resultadoEvento = com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.BLOQUEADO,
+                    leccion = escenarioDemoMalicioso.leccionAcierto,
+                    deltaPuntaje = 15,
+                    deltaSalud = 0,
+                    deltaDinero = 50,
+                    sugerencia = SugerenciaRegla(
+                        puerto = escenarioDemoMalicioso.puerto,
+                        servicio = escenarioDemoMalicioso.servicioNombre,
+                        accionTexto = "Bloquear",
+                        texto = "Has bloqueado el puerto ${escenarioDemoMalicioso.puerto} " +
+                            "(${escenarioDemoMalicioso.servicioNombre}) 3 veces y siempre " +
+                            "acertaste. Cuando reconoces un patrón, puedes crear una REGLA para " +
+                            "que el firewall lo haga solo. Ve a 'Mis reglas' y crea una regla: " +
+                            "puerto ${escenarioDemoMalicioso.puerto}, acción Bloquear.",
+                    ),
+                ),
+            ),
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
