@@ -13,7 +13,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -24,6 +28,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,7 +48,8 @@ import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
  * reglas ALLOW/DENY que el motor usará al simular ataques.
  *
  * Es la pieza que faltaba para que el jugador **decida** de verdad: sin reglas propias, el motor
- * solo aplica la política por defecto (DENY).
+ * solo aplica la política por defecto (DENY). Las reglas **automatizan** las decisiones que el
+ * jugador ya aprendió a tomar a mano en "Ataque en vivo".
  *
  * Punto de entrada con estado (conectado al ViewModel).
  */
@@ -99,6 +107,8 @@ fun FirewallScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item { TarjetaIntro() }
+
             item {
                 FormularioRegla(
                     puertoTexto = estado.puertoTexto,
@@ -142,6 +152,36 @@ fun FirewallScreen(
     }
 }
 
+/** Explica, en lenguaje simple, qué es esta pantalla y para qué sirven las reglas. */
+@Composable
+private fun TarjetaIntro(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "¿Qué son las reglas?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Las reglas automatizan tus decisiones: en vez de decidir cada ataque a mano " +
+                    "(como en 'Ataque en vivo'), el firewall aplicará esto solo. Elige un puerto, " +
+                    "decide si permitirlo o bloquearlo, y el motor lo hará por ti cada vez.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormularioRegla(
     puertoTexto: String,
@@ -165,11 +205,25 @@ private fun FormularioRegla(
                 fontWeight = FontWeight.Bold,
             )
 
+            // --- Vía guiada (principal): elegir un puerto del catálogo ---
+            SelectorPuerto(puertoTexto = puertoTexto, onPuertoElegido = onPuertoCambiado)
+
+            // Explicación inmediata del puerto elegido/escrito (si está en el catálogo).
+            CatalogoPuertos.buscar(puertoTexto.toIntOrNull())?.let { puerto ->
+                Text(
+                    CatalogoPuertos.etiqueta(puerto.numero),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(puerto.explicacion, style = MaterialTheme.typography.bodySmall)
+            }
+
+            // --- Vía avanzada: escribir un puerto manual (fuera del catálogo) ---
             OutlinedTextField(
                 value = puertoTexto,
                 onValueChange = onPuertoCambiado,
-                label = { Text("Puerto") },
-                placeholder = { Text("Ej. 443") },
+                label = { Text("Puerto (avanzado: escríbelo a mano)") },
+                placeholder = { Text("Ej. 8080") },
                 singleLine = true,
                 isError = errorFormulario != null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -185,6 +239,11 @@ private fun FormularioRegla(
                 isError = errorFormulario != null,
                 modifier = Modifier.fillMaxWidth(),
             )
+            Text(
+                "Déjala vacía para que la regla aplique a cualquier origen. Escribe una IP para " +
+                    "que aplique solo a ese origen concreto.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             Text("Acción", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -196,6 +255,12 @@ private fun FormularioRegla(
                     )
                 }
             }
+            Text(
+                "Permitir: dejas pasar ese tráfico (permitir de más = dejas entrar amenazas). " +
+                    "Bloquear: lo frenas (bloquear de más = dejas sin servicio a usuarios " +
+                    "legítimos, un 'falso positivo').",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             errorFormulario?.let { mensaje ->
                 Text(
@@ -207,6 +272,64 @@ private fun FormularioRegla(
 
             Button(onClick = onCrearRegla, modifier = Modifier.fillMaxWidth()) {
                 Text("Crear regla")
+            }
+        }
+    }
+}
+
+/**
+ * Selector guiado de puerto (menú desplegable M3). Al elegir una opción, rellena el campo puerto
+ * reutilizando el mismo `onPuertoElegido` (= `onPuertoCambiado` del ViewModel), sin cambiar el
+ * contrato. Usa la etiqueta coherente "puerto — servicio".
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectorPuerto(
+    puertoTexto: String,
+    onPuertoElegido: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expandido by remember { mutableStateOf(false) }
+    val seleccionado = CatalogoPuertos.buscar(puertoTexto.toIntOrNull())
+    val textoCampo = seleccionado?.let { CatalogoPuertos.etiqueta(it.numero) } ?: ""
+
+    ExposedDropdownMenuBox(
+        expanded = expandido,
+        onExpandedChange = { expandido = it },
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = textoCampo,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Elige un puerto común") },
+            placeholder = { Text("Toca para ver la lista") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandido) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expandido,
+            onDismissRequest = { expandido = false },
+        ) {
+            CatalogoPuertos.puertos.forEach { puerto ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                CatalogoPuertos.etiqueta(puerto.numero),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(puerto.explicacion, style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    onClick = {
+                        onPuertoElegido(puerto.numero.toString())
+                        expandido = false
+                    },
+                )
             }
         }
     }
@@ -232,7 +355,7 @@ private fun FilaRegla(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    "${textoAccion(regla.accion)} · puerto ${regla.puerto}",
+                    "${textoAccion(regla.accion)} · ${CatalogoPuertos.etiqueta(regla.puerto)}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = colorAccion(regla.accion),
@@ -266,7 +389,8 @@ private fun TarjetaSinReglas(modifier: Modifier = Modifier) {
             )
             Text(
                 "Mientras no crees ninguna, el firewall bloquea todo el tráfico por defecto " +
-                    "(política DENY). Crea una regla para decidir tú.",
+                    "(política DENY). Crea tu primera regla arriba para empezar a decidir tú: " +
+                    "por ejemplo, permitir el puerto 443 (webs seguras).",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
