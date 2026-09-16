@@ -35,6 +35,16 @@ sealed class Rutas(val ruta: String) {
         fun crearRuta(uid: String): String = "config-red/${Uri.encode(uid)}"
     }
 
+    /**
+     * Pantalla "Ataque en vivo": el jugador decide permitir/bloquear un escenario pedagógico.
+     * Recibe el `uid` del jugador como argumento de ruta, con el mismo patrón que [Firewall] y
+     * [ConfigRed]: el destino es autocontenido y su ViewModel no necesita consultar Firebase.
+     */
+    data object AtaqueEnVivo : Rutas("ataque-en-vivo/{$ARG_UID}") {
+        /** Construye la ruta concreta para un [uid] dado. */
+        fun crearRuta(uid: String): String = "ataque-en-vivo/${Uri.encode(uid)}"
+    }
+
     companion object {
         /** Nombre del argumento de ruta que transporta el uid del jugador. */
         const val ARG_UID = "uid"

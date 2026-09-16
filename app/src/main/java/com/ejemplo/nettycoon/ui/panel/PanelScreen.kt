@@ -28,26 +28,23 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
-import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
-import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
-import com.ejemplo.nettycoon.domain.model.Ataque
-import com.ejemplo.nettycoon.domain.model.CategoriaResultado
-import com.ejemplo.nettycoon.domain.model.ResultadoRonda
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 
 /**
- * Panel del juego (FASE 1): cierra el bucle de punta a punta con la pantalla más simple posible.
+ * Panel del juego: hub central. Muestra el estado de la partida y da acceso a las tres
+ * pantallas: "Ataque en vivo" (donde el jugador decide y aprende), "Mis reglas" (CRUD para
+ * automatizar decisiones) y "Configurar red".
  *
- * Muestra el estado de la partida, un botón para simular un ataque (que ejecuta una ronda real
- * vía `ProcesarAtaqueUseCase`) y el resultado de la última ronda, con estados de UI visibles
- * (Cargando / Error). Desde aquí se accede también a la pantalla de reglas, cuyas reglas activas
- * usa el motor al simular; sin ninguna regla, aplica la política por defecto (DENY).
+ * La simulación de ronda ya no ocurre aquí: se traslada a la pantalla "Ataque en vivo". Los
+ * miembros `simularAtaque`/`ultimaRonda` del [PanelViewModel] quedan sin uso a propósito en esta
+ * fase (deuda anotada a limpiar más adelante); no se reabren en esta tarea.
  *
  * Punto de entrada con estado (conectado al ViewModel).
  */
 @Composable
 fun PanelScreen(
     viewModel: PanelViewModel,
+    onIrAAtaqueEnVivo: () -> Unit,
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
     onCerrarSesion: () -> Unit,
@@ -56,8 +53,8 @@ fun PanelScreen(
     val estado by viewModel.estado.collectAsStateWithLifecycle()
     PanelScreen(
         estado = estado,
-        onSimularAtaque = viewModel::simularAtaque,
         onLimpiarError = viewModel::limpiarError,
+        onIrAAtaqueEnVivo = onIrAAtaqueEnVivo,
         onIrAReglas = onIrAReglas,
         onIrAConfigRed = onIrAConfigRed,
         onCerrarSesion = onCerrarSesion,
@@ -70,8 +67,8 @@ fun PanelScreen(
 @Composable
 fun PanelScreen(
     estado: PanelUiState,
-    onSimularAtaque: () -> Unit,
     onLimpiarError: () -> Unit,
+    onIrAAtaqueEnVivo: () -> Unit,
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
     onCerrarSesion: () -> Unit,
@@ -99,11 +96,10 @@ fun PanelScreen(
             TarjetaPartida(partida = estado.partida)
 
             Button(
-                onClick = onSimularAtaque,
-                enabled = !estado.cargando,
+                onClick = onIrAAtaqueEnVivo,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Simular ataque")
+                Text("Ataque en vivo")
             }
 
             OutlinedButton(
@@ -132,10 +128,6 @@ fun PanelScreen(
             estado.error?.let { mensaje ->
                 TarjetaError(mensaje = mensaje, onLimpiarError = onLimpiarError)
             }
-
-            estado.ultimaRonda?.let { ronda ->
-                TarjetaUltimaRonda(ronda = ronda)
-            }
         }
     }
 }
@@ -160,32 +152,6 @@ private fun TarjetaPartida(partida: EstadoPartida?, modifier: Modifier = Modifie
                 FilaDato("Dinero virtual", "$${partida.dineroVirtual}")
                 FilaDato("Nivel", partida.nivel.toString())
             }
-        }
-    }
-}
-
-@Composable
-private fun TarjetaUltimaRonda(ronda: ResultadoRonda, modifier: Modifier = Modifier) {
-    val evento = ronda.evento
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                "Última ronda",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            FilaDato("IP atacante", evento.ipAtacante)
-            FilaDato("País", evento.pais ?: "desconocido")
-            FilaDato("ISP", evento.isp ?: "desconocido")
-            FilaDato("Tráfico", textoResultado(evento.resultado))
-            FilaDato(
-                "Resultado",
-                if (evento.acierto) "Acierto" else "Fallo",
-            )
-            FilaDato("Categoría", textoCategoria(ronda.evaluacion.categoria))
         }
     }
 }
@@ -233,18 +199,6 @@ private fun FilaDato(etiqueta: String, valor: String) {
     }
 }
 
-private fun textoResultado(resultado: ResultadoEvento): String = when (resultado) {
-    ResultadoEvento.BLOQUEADO -> "Bloqueado"
-    ResultadoEvento.PERMITIDO -> "Permitido"
-}
-
-private fun textoCategoria(categoria: CategoriaResultado): String = when (categoria) {
-    CategoriaResultado.BLOQUEO_CORRECTO -> "Bloqueo correcto"
-    CategoriaResultado.PERMISO_CORRECTO -> "Permiso correcto"
-    CategoriaResultado.BRECHA -> "Brecha (pasó un ataque real)"
-    CategoriaResultado.FALSO_POSITIVO -> "Falso positivo (bloqueaste tráfico legítimo)"
-}
-
 // --- Previews ---
 
 @Preview(showBackground = true)
@@ -254,29 +208,9 @@ private fun PanelScreenPreview() {
         PanelScreen(
             estado = PanelUiState(
                 partida = EstadoPartida(owner = "demo", puntaje = 30, saludRed = 90, nivel = 2),
-                ultimaRonda = ResultadoRonda(
-                    ataque = Ataque("203.0.113.9", puertoDestino = 443, esMalicioso = true),
-                    evaluacion = com.ejemplo.nettycoon.domain.model.ResultadoEvaluacion(
-                        accionAplicada = com.ejemplo.nettycoon.data.local.entity.AccionFirewall.DENY,
-                        reglaCoincidente = null,
-                        resultado = ResultadoEvento.BLOQUEADO,
-                        acierto = true,
-                        categoria = CategoriaResultado.BLOQUEO_CORRECTO,
-                    ),
-                    evento = EventoAtaque(
-                        owner = "demo",
-                        ipAtacante = "203.0.113.9",
-                        puertoDestino = 443,
-                        pais = "Colombia",
-                        isp = "ISP Ejemplo",
-                        resultado = ResultadoEvento.BLOQUEADO,
-                        acierto = true,
-                    ),
-                    estadoPartida = EstadoPartida(owner = "demo", puntaje = 30, saludRed = 90, nivel = 2),
-                ),
             ),
-            onSimularAtaque = {},
             onLimpiarError = {},
+            onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},
             onCerrarSesion = {},
@@ -293,8 +227,8 @@ private fun PanelScreenCargandoPreview() {
                 partida = EstadoPartida(owner = "demo"),
                 cargando = true,
             ),
-            onSimularAtaque = {},
             onLimpiarError = {},
+            onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},
             onCerrarSesion = {},

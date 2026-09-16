@@ -18,6 +18,9 @@ import com.ejemplo.nettycoon.auth.AuthViewModelFactory
 import com.ejemplo.nettycoon.ui.firewall.FirewallScreen
 import com.ejemplo.nettycoon.ui.firewall.FirewallViewModel
 import com.ejemplo.nettycoon.ui.firewall.FirewallViewModelFactory
+import com.ejemplo.nettycoon.ui.ataque.AtaqueEnVivoScreen
+import com.ejemplo.nettycoon.ui.ataque.AtaqueEnVivoViewModel
+import com.ejemplo.nettycoon.ui.ataque.AtaqueEnVivoViewModelFactory
 import com.ejemplo.nettycoon.ui.login.LoginScreen
 import com.ejemplo.nettycoon.ui.login.RegistroScreen
 import com.ejemplo.nettycoon.ui.network.ConfigRedScreen
@@ -98,6 +101,7 @@ fun NetTycoonNavHost(
             )
             PanelScreen(
                 viewModel = panelViewModel,
+                onIrAAtaqueEnVivo = { navController.navigate(Rutas.AtaqueEnVivo.crearRuta(uid)) },
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
                 onIrAConfigRed = { navController.navigate(Rutas.ConfigRed.crearRuta(uid)) },
                 onCerrarSesion = {
@@ -140,6 +144,23 @@ fun NetTycoonNavHost(
             )
             ConfigRedScreen(
                 viewModel = configRedViewModel,
+                onVolver = { navController.popBackStack() },
+            )
+        }
+
+        // Destino con argumento de ruta (mismo patrón que Firewall/ConfigRed): el uid viaja en la
+        // ruta, así la pantalla es autocontenida y su ViewModel no necesita consultar Firebase.
+        composable(
+            route = Rutas.AtaqueEnVivo.ruta,
+            arguments = listOf(navArgument(Rutas.ARG_UID) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val context = LocalContext.current.applicationContext
+            val uid = backStackEntry.arguments?.getString(Rutas.ARG_UID).orEmpty()
+            val ataqueViewModel: AtaqueEnVivoViewModel = viewModel(
+                factory = AtaqueEnVivoViewModelFactory(context, uid),
+            )
+            AtaqueEnVivoScreen(
+                viewModel = ataqueViewModel,
                 onVolver = { navController.popBackStack() },
             )
         }
