@@ -89,6 +89,8 @@ fun ConfigRedScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            TarjetaIntro()
+
             OutlinedTextField(
                 value = estado.ipRouterTexto,
                 onValueChange = onIpRouterCambiado,
@@ -96,8 +98,17 @@ fun ConfigRedScreen(
                 placeholder = { Text("192.168.0.1") },
                 singleLine = true,
                 isError = estado.errorFormulario != null,
+                supportingText = {
+                    Text(
+                        "Es la dirección de tu router dentro de tu red: la puerta de entrada por " +
+                            "la que pasan todos los dispositivos. En casa suele ser algo como " +
+                            "192.168.0.1 o 192.168.1.1.",
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            TarjetaLanVsWan()
 
             OutlinedTextField(
                 value = estado.puertoLanTexto,
@@ -106,6 +117,12 @@ fun ConfigRedScreen(
                 singleLine = true,
                 isError = estado.errorFormulario != null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                supportingText = {
+                    Text(
+                        "LAN es tu red INTERNA (tus propios equipos: computadores, impresoras…). " +
+                            "Este es el puerto que usan para comunicarse dentro de tu red.",
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -116,6 +133,12 @@ fun ConfigRedScreen(
                 singleLine = true,
                 isError = estado.errorFormulario != null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                supportingText = {
+                    Text(
+                        "WAN es la conexión HACIA INTERNET (el mundo exterior). Este es el puerto " +
+                            "por el que tu red se comunica con afuera.",
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -152,6 +175,58 @@ fun ConfigRedScreen(
                 TarjetaError(mensaje = mensaje, onLimpiarError = onLimpiarError)
             }
         }
+    }
+}
+
+/**
+ * Explica qué es esta pantalla y la distingue de "Mis reglas", para que el jugador no confunda
+ * estos puertos (su propia infraestructura) con los de los ataques (qué tráfico permitir/bloquear).
+ * Mismo estilo de tarjeta introductoria que `FirewallScreen`, para que se sientan de la misma familia.
+ */
+@Composable
+private fun TarjetaIntro(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "¿Qué es esta pantalla?",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Aquí defines cómo está montada tu red: la dirección de tu router y los puertos " +
+                    "que usa. Es la información base de tu infraestructura; no es donde decides " +
+                    "qué bloquear (eso es 'Mis reglas').",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+/** Mnemónico del concepto que más cuesta a un novato: LAN (adentro) vs. WAN (afuera). */
+@Composable
+private fun TarjetaLanVsWan(modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Text(
+            "🏠 LAN = adentro (tu casa/oficina)  ·  🌐 WAN = afuera (internet)",
+            modifier = Modifier.padding(16.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
