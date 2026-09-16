@@ -161,6 +161,7 @@ fun NetTycoonNavHost(
             )
             AtaqueEnVivoScreen(
                 viewModel = ataqueViewModel,
+                onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
                 onVolver = { navController.popBackStack() },
             )
         }

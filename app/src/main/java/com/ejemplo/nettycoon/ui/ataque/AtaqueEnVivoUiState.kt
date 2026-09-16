@@ -44,4 +44,24 @@ data class ResultadoDecision(
     val deltaPuntaje: Int,
     val deltaSalud: Int,
     val deltaDinero: Int,
+    /**
+     * Sugerencia pedagógica para automatizar con una regla el patrón que el jugador acaba de
+     * repetir con acierto, o `null` si esta ronda no dispara ninguna (lo habitual). Con default
+     * `null` para no romper llamadas/previews/tests que no la usan.
+     */
+    val sugerencia: SugerenciaRegla? = null,
+)
+
+/**
+ * Sugerencia (puramente EXPLICATIVA) de crear una regla de firewall para automatizar un patrón
+ * que el jugador ya domina a mano. No crea ni prellena nada: solo enseña y ofrece ir al CRUD de
+ * reglas.
+ */
+data class SugerenciaRegla(
+    val puerto: Int,
+    val servicio: String,
+    /** Acción a automatizar, en texto para el jugador: "Bloquear" o "Permitir". */
+    val accionTexto: String,
+    /** Mensaje pedagógico completo, ya adaptado al puerto/servicio/decisión reales. */
+    val texto: String,
 )
