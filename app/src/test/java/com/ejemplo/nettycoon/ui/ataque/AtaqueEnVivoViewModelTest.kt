@@ -80,12 +80,14 @@ class AtaqueEnVivoViewModelTest {
         partidaDao: FakeEstadoPartidaDao,
         eventoDao: FakeEventoAtaqueDao,
         escenarios: List<EscenarioAtaque>,
-        seleccionar: (Int?) -> Int = { 0 },
+        nivel: Dificultad = Dificultad.MEDIO,
+        seleccionar: (Int?, Int) -> Int = { _, _ -> 0 },
     ) = AtaqueEnVivoViewModel(
         uid = uid,
         partidaRepo = PartidaRepository(partidaDao),
         eventoRepo = EventoAtaqueRepository(eventoDao),
         escenarios = escenarios,
+        nivelInicial = nivel,
         seleccionarSiguiente = seleccionar,
     )
 
@@ -219,7 +221,7 @@ class AtaqueEnVivoViewModelTest {
         val vm = crearViewModel(
             partidaDao, eventoDao,
             escenarios = listOf(malicioso, legitimo),
-            seleccionar = { actual -> if (actual == 0) 1 else 0 },
+            seleccionar = { actual, _ -> if (actual == 0) 1 else 0 },
         )
         advanceUntilIdle()
         assertEquals(malicioso, vm.estado.value.escenario)
@@ -241,7 +243,7 @@ class AtaqueEnVivoViewModelTest {
     fun `tras 3 aciertos del mismo patron aparece la sugerencia (no antes)`() = runTest(dispatcher) {
         val (partidaDao, eventoDao) = contexto()
         // Escenario único: selector determinista que siempre devuelve 0 (mismo puerto/decisión).
-        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { 0 })
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { _, _ -> 0 })
         advanceUntilIdle()
 
         // Ronda 1 y 2: sin sugerencia todavía.
@@ -268,7 +270,7 @@ class AtaqueEnVivoViewModelTest {
     fun `un patron con errores nunca sugiere automatizar`() = runTest(dispatcher) {
         val (partidaDao, eventoDao) = contexto()
         // Legítimo + Bloquear = falso positivo (error) repetido: no debe contar ni sugerir.
-        val vm = crearViewModel(partidaDao, eventoDao, listOf(legitimo), seleccionar = { 0 })
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(legitimo), seleccionar = { _, _ -> 0 })
         advanceUntilIdle()
 
         repeat(4) {
@@ -283,7 +285,7 @@ class AtaqueEnVivoViewModelTest {
     @Test
     fun `la sugerencia no se repite para el mismo patron`() = runTest(dispatcher) {
         val (partidaDao, eventoDao) = contexto()
-        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { 0 })
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { _, _ -> 0 })
         advanceUntilIdle()
 
         // Llega al umbral en la 3ª (sugerencia presente).
@@ -305,7 +307,7 @@ class AtaqueEnVivoViewModelTest {
         val vm = crearViewModel(
             partidaDao, eventoDao,
             escenarios = listOf(malicioso, legitimo),
-            seleccionar = { actual -> if (actual == 0) 1 else 0 },
+            seleccionar = { actual, _ -> if (actual == 0) 1 else 0 },
         )
         advanceUntilIdle()
 
@@ -326,4 +328,126 @@ class AtaqueEnVivoViewModelTest {
         assertNotNull(sugerencias[4])
         assertEquals(22, sugerencias[4]!!.puerto)
     }
+
+    // --- Fase 3: niveles de dificultad + progresión ---
+
+    /** VM con el catálogo real y el selector de progresión por defecto (secuencial). */
+    private fun vmConNivel(
+        partidaDao: FakeEstadoPartidaDao,
+        eventoDao: FakeEventoAtaqueDao,
+        nivelInicial: Dificultad?,
+    ) = AtaqueEnVivoViewModel(
+        uid = uid,
+        partidaRepo = PartidaRepository(partidaDao),
+        eventoRepo = EventoAtaqueRepository(eventoDao),
+        nivelInicial = nivelInicial,
+    )
+
+    @Test
+    fun `sin elegir nivel se muestra el selector (sin escenario)`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        val vm = vmConNivel(partidaDao, eventoDao, nivelInicial = null)
+        advanceUntilIdle()
+
+        assertNull(vm.estado.value.nivel)
+        assertNull(vm.estado.value.escenario)
+        assertFalse(vm.estado.value.nivelCompletado)
+    }
+
+    @Test
+    fun `un nivel solo sirve sus escenarios, en orden del catalogo, hasta completarse`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            val vm = vmConNivel(partidaDao, eventoDao, nivelInicial = Dificultad.FACIL)
+            advanceUntilIdle()
+
+            val esperados = CatalogoAtaques.escenarios.filter { it.dificultad == Dificultad.FACIL }
+            val vistos = mutableListOf<EscenarioAtaque>()
+
+            var guarda = 0
+            while (!vm.estado.value.nivelCompletado && guarda++ < 100) {
+                val esc = vm.estado.value.escenario!!
+                assertEquals(Dificultad.FACIL, esc.dificultad)
+                vistos.add(esc)
+                vm.onPermitir() // decide algo para poder avanzar
+                advanceUntilIdle()
+                vm.onSiguienteAtaque()
+            }
+
+            assertTrue(vm.estado.value.nivelCompletado)
+            assertNull(vm.estado.value.escenario)
+            // La progresión recorrió exactamente los del nivel, en el orden del catálogo.
+            assertEquals(esperados, vistos)
+        }
+
+    @Test
+    fun `cambiar de nivel vuelve al selector, cambia el conjunto y reinicia contadores`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            val vm = vmConNivel(partidaDao, eventoDao, nivelInicial = Dificultad.FACIL)
+            advanceUntilIdle()
+
+            vm.onPermitir()
+            advanceUntilIdle()
+            assertEquals(1, vm.estado.value.rondas)
+            assertEquals(Dificultad.FACIL, vm.estado.value.escenario!!.dificultad)
+
+            vm.cambiarNivel()
+            assertNull(vm.estado.value.nivel)
+            assertNull(vm.estado.value.escenario)
+
+            vm.elegirNivel(Dificultad.DIFICIL)
+            advanceUntilIdle()
+            assertEquals(Dificultad.DIFICIL, vm.estado.value.nivel)
+            assertEquals(Dificultad.DIFICIL, vm.estado.value.escenario!!.dificultad)
+            // Contadores reiniciados al cambiar de nivel.
+            assertEquals(0, vm.estado.value.aciertos)
+            assertEquals(0, vm.estado.value.rondas)
+        }
+
+    @Test
+    fun `reciclar reinicia el nivel desde el primer escenario y limpia contadores`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            val vm = vmConNivel(partidaDao, eventoDao, nivelInicial = Dificultad.FACIL)
+            advanceUntilIdle()
+            val primero = vm.estado.value.escenario
+
+            vm.onPermitir()
+            advanceUntilIdle()
+            vm.onSiguienteAtaque()
+            vm.onPermitir()
+            advanceUntilIdle()
+            assertEquals(2, vm.estado.value.rondas)
+
+            vm.reciclarNivel()
+            advanceUntilIdle()
+            assertEquals(primero, vm.estado.value.escenario)
+            assertFalse(vm.estado.value.nivelCompletado)
+            assertEquals(0, vm.estado.value.rondas)
+            assertEquals(0, vm.estado.value.aciertos)
+        }
+
+    @Test
+    fun `el puente sigue disparando si se repite el mismo puerto dentro del nivel`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Selector que se queda en el mismo escenario (puerto 22): simula repetir el patrón.
+            val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), seleccionar = { _, _ -> 0 })
+            advanceUntilIdle()
+
+            var sugerencia: SugerenciaRegla? = null
+            repeat(3) {
+                vm.onBloquear()
+                advanceUntilIdle()
+                sugerencia = vm.estado.value.ultimoResultado!!.sugerencia
+                vm.onSiguienteAtaque()
+            }
+
+            // Al 3er acierto del mismo puerto, el puente sigue funcional (solo es menos frecuente
+            // con la progresión, que normalmente cambia de escenario cada vez).
+            assertNotNull(sugerencia)
+            assertEquals(22, sugerencia!!.puerto)
+            assertEquals("Bloquear", sugerencia!!.accionTexto)
+        }
 }
