@@ -121,6 +121,15 @@ fun NetTycoonNavHost(
             )
         }
 
+        // Revisita manual del onboarding desde el panel. Reutiliza la misma pantalla, pero al
+        // terminar/saltar vuelve al panel (popBackStack): no marca el flag ni toca la sesión.
+        composable(Rutas.OnboardingManual.ruta) {
+            OnboardingScreen(
+                onTerminar = { navController.popBackStack() },
+                onSaltar = { navController.popBackStack() },
+            )
+        }
+
         composable(Rutas.Home.ruta) {
             val context = LocalContext.current.applicationContext
             // El uid lo aporta la sesión ya existente (el ViewModel no consulta Firebase).
@@ -135,6 +144,7 @@ fun NetTycoonNavHost(
                 onIrAAtaqueEnVivo = { navController.navigate(Rutas.AtaqueEnVivo.crearRuta(uid)) },
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
                 onIrAConfigRed = { navController.navigate(Rutas.ConfigRed.crearRuta(uid)) },
+                onVerOnboarding = { navController.navigate(Rutas.OnboardingManual.ruta) },
                 onCerrarSesion = {
                     authViewModel.cerrarSesion()
                     authViewModel.consumirExito()

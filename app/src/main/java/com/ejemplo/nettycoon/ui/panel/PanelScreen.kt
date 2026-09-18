@@ -47,6 +47,7 @@ fun PanelScreen(
     onIrAAtaqueEnVivo: () -> Unit,
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
+    onVerOnboarding: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -57,6 +58,7 @@ fun PanelScreen(
         onIrAAtaqueEnVivo = onIrAAtaqueEnVivo,
         onIrAReglas = onIrAReglas,
         onIrAConfigRed = onIrAConfigRed,
+        onVerOnboarding = onVerOnboarding,
         onCerrarSesion = onCerrarSesion,
         modifier = modifier,
     )
@@ -71,6 +73,7 @@ fun PanelScreen(
     onIrAAtaqueEnVivo: () -> Unit,
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
+    onVerOnboarding: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -114,6 +117,13 @@ fun PanelScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Configurar red")
+            }
+
+            OutlinedButton(
+                onClick = onVerOnboarding,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Cómo se juega")
             }
 
             if (estado.cargando) {
@@ -213,6 +223,7 @@ private fun PanelScreenPreview() {
             onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},
+            onVerOnboarding = {},
             onCerrarSesion = {},
         )
     }
@@ -231,6 +242,7 @@ private fun PanelScreenCargandoPreview() {
             onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},
+            onVerOnboarding = {},
             onCerrarSesion = {},
         )
     }
