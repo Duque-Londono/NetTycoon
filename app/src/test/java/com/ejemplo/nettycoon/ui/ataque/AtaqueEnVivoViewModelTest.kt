@@ -1,11 +1,15 @@
 package com.ejemplo.nettycoon.ui.ataque
 
+import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
+import com.ejemplo.nettycoon.domain.firewall.fakes.FakeReglaFirewallDao
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -82,10 +86,12 @@ class AtaqueEnVivoViewModelTest {
         escenarios: List<EscenarioAtaque>,
         nivel: Dificultad = Dificultad.MEDIO,
         seleccionar: (Int?, Int) -> Int = { _, _ -> 0 },
+        reglaDao: FakeReglaFirewallDao = FakeReglaFirewallDao(),
     ) = AtaqueEnVivoViewModel(
         uid = uid,
         partidaRepo = PartidaRepository(partidaDao),
         eventoRepo = EventoAtaqueRepository(eventoDao),
+        reglaRepo = ReglaFirewallRepository(reglaDao),
         escenarios = escenarios,
         nivelInicial = nivel,
         seleccionarSiguiente = seleccionar,
@@ -340,6 +346,7 @@ class AtaqueEnVivoViewModelTest {
         uid = uid,
         partidaRepo = PartidaRepository(partidaDao),
         eventoRepo = EventoAtaqueRepository(eventoDao),
+        reglaRepo = ReglaFirewallRepository(FakeReglaFirewallDao()),
         nivelInicial = nivelInicial,
     )
 
@@ -450,4 +457,128 @@ class AtaqueEnVivoViewModelTest {
             assertEquals(22, sugerencia!!.puerto)
             assertEquals("Bloquear", sugerencia!!.accionTexto)
         }
+
+    // --- Fase 4: puente reglas → juego (automatización) ---
+
+    private fun reglaDe(
+        puerto: Int,
+        accion: AccionFirewall,
+        ip: String? = null,
+        activa: Boolean = true,
+    ) = ReglaFirewall(owner = uid, puerto = puerto, ip = ip, accion = accion, activa = activa)
+
+    @Test
+    fun `regla que aplica y acierta automatiza la ronda sin tocar puntaje ni contadores`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Regla DENY en el puerto 22 (malicioso) → bloquear es lo correcto.
+            val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(22, AccionFirewall.DENY)))
+            val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), reglaDao = reglaDao)
+            advanceUntilIdle()
+
+            val resultado = vm.estado.value.ultimoResultado!!
+            // Se resolvió sola: es automatizada, acertó y bloqueó.
+            assertTrue(resultado.automatizada)
+            assertTrue(resultado.acierto)
+            assertEquals(CategoriaResultado.BLOQUEO_CORRECTO, resultado.categoria)
+            assertEquals(ResultadoEvento.BLOQUEADO, resultado.resultadoEvento)
+            assertEquals(malicioso.leccionAcierto, resultado.leccion)
+
+            // La tarjeta describe la regla que actuó.
+            assertNotNull(resultado.automatizadaPor)
+            assertEquals(22, resultado.automatizadaPor!!.puerto)
+            assertEquals("Bloquear", resultado.automatizadaPor!!.accionTexto)
+
+            // NO toca puntaje/salud/dinero ni contadores ni puente.
+            assertEquals(0, resultado.deltaPuntaje)
+            assertEquals(0, resultado.deltaSalud)
+            assertEquals(0, resultado.deltaDinero)
+            assertNull(resultado.sugerencia)
+            assertEquals(0, vm.estado.value.aciertos)
+            assertEquals(0, vm.estado.value.rondas)
+            assertFalse(vm.estado.value.evaluandoRegla)
+
+            // La partida queda intacta (sin cambios respecto a la base).
+            assertEquals(100, partidaDao.almacen.getValue(uid).puntaje)
+            assertEquals(1000, partidaDao.almacen.getValue(uid).dineroVirtual)
+            assertEquals(100, partidaDao.almacen.getValue(uid).saludRed)
+
+            // Pero SÍ se registra el evento (historial veraz).
+            assertEquals(1, eventoDao.insertados.size)
+            val evento = eventoDao.insertados.first()
+            assertEquals(22, evento.puertoDestino)
+            assertEquals(ResultadoEvento.BLOQUEADO, evento.resultado)
+            assertTrue(evento.acierto)
+        }
+
+    @Test
+    fun `sin regla que aplique se decide a mano (el default-DENY no auto-decide)`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Regla de OTRO puerto: no casa con el escenario del puerto 22.
+            val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(443, AccionFirewall.ALLOW)))
+            val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), reglaDao = reglaDao)
+            advanceUntilIdle()
+
+            // No se automatizó: no hay veredicto y ya no se está evaluando → se muestran botones.
+            assertNull(vm.estado.value.ultimoResultado)
+            assertFalse(vm.estado.value.evaluandoRegla)
+            assertEquals(0, eventoDao.insertados.size)
+
+            // Y la decisión manual funciona igual que hoy.
+            vm.onBloquear()
+            advanceUntilIdle()
+            val resultado = vm.estado.value.ultimoResultado!!
+            assertFalse(resultado.automatizada)
+            assertTrue(resultado.acierto)
+            assertEquals(15, resultado.deltaPuntaje)
+            assertEquals(1, vm.estado.value.rondas)
+            assertEquals(1, eventoDao.insertados.size)
+        }
+
+    @Test
+    fun `una regla mal puesta automatiza una BRECHA (acierto false) sin penalizar metricas`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Regla ALLOW en el puerto 22, pero el escenario es malicioso → deja pasar un ataque.
+            val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(22, AccionFirewall.ALLOW)))
+            val vm = crearViewModel(partidaDao, eventoDao, listOf(malicioso), reglaDao = reglaDao)
+            advanceUntilIdle()
+
+            val resultado = vm.estado.value.ultimoResultado!!
+            assertTrue(resultado.automatizada)
+            assertFalse(resultado.acierto)
+            assertEquals(CategoriaResultado.BRECHA, resultado.categoria)
+            assertEquals(ResultadoEvento.PERMITIDO, resultado.resultadoEvento)
+            assertEquals(malicioso.leccionError, resultado.leccion)
+            assertEquals("Permitir", resultado.automatizadaPor!!.accionTexto)
+
+            // Descartada la penalización: la brecha automatizada NO resta salud/dinero.
+            assertEquals(0, resultado.deltaSalud)
+            assertEquals(0, resultado.deltaDinero)
+            assertEquals(100, partidaDao.almacen.getValue(uid).saludRed)
+
+            // Historial veraz: el evento refleja el fallo.
+            val evento = eventoDao.insertados.first()
+            assertEquals(ResultadoEvento.PERMITIDO, evento.resultado)
+            assertFalse(evento.acierto)
+        }
+
+    @Test
+    fun `una regla comodin (IP nula) aplica y la tarjeta muestra IP nula`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // Regla sin IP (comodín) en el puerto 443 legítimo → permitir es lo correcto.
+        val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(443, AccionFirewall.ALLOW, ip = null)))
+        val vm = crearViewModel(partidaDao, eventoDao, listOf(legitimo), reglaDao = reglaDao)
+        advanceUntilIdle()
+
+        val resultado = vm.estado.value.ultimoResultado!!
+        assertTrue(resultado.automatizada)
+        assertTrue(resultado.acierto)
+        assertEquals(CategoriaResultado.PERMISO_CORRECTO, resultado.categoria)
+        assertNull(resultado.automatizadaPor!!.ip)
+        assertEquals("Permitir", resultado.automatizadaPor!!.accionTexto)
+        // No incrementa contadores manuales.
+        assertEquals(0, vm.estado.value.rondas)
+    }
 }

@@ -22,6 +22,9 @@ import com.ejemplo.nettycoon.domain.model.CategoriaResultado
  *   aún no ha decidido (fase de "situación + pista").
  * - [aciertos] / [rondas]: contador visible de progreso pedagógico (se reinicia al cambiar de nivel).
  * - [cargando]: `true` durante la carga inicial de la partida.
+ * - [evaluandoRegla]: `true` mientras se comprueba (antes de mostrar los botones) si alguna regla
+ *   activa del jugador aplica al escenario actual. Muy breve (lectura local de Room); durante este
+ *   lapso la UI muestra un indicador "Comprobando tus reglas…" en vez de los botones de decisión.
  * - [error]: mensaje a mostrar si algo falla (persistencia), o `null`.
  */
 data class AtaqueEnVivoUiState(
@@ -33,6 +36,7 @@ data class AtaqueEnVivoUiState(
     val aciertos: Int = 0,
     val rondas: Int = 0,
     val cargando: Boolean = true,
+    val evaluandoRegla: Boolean = false,
     val error: String? = null,
 ) {
     /** `true` si el jugador ya decidió sobre el escenario actual (hay veredicto que mostrar). */
@@ -61,6 +65,33 @@ data class ResultadoDecision(
      * `null` para no romper llamadas/previews/tests que no la usan.
      */
     val sugerencia: SugerenciaRegla? = null,
+    /**
+     * Si la ronda fue resuelta AUTOMÁTICAMENTE por una regla activa del jugador (en vez de a mano),
+     * describe qué regla actuó; `null` si fue una decisión manual (lo habitual). Con default `null`
+     * para no romper llamadas/previews/tests que no la usan.
+     *
+     * En rondas automatizadas los `delta*` van en 0: NO afectan puntaje/salud/dinero ni cuentan como
+     * acierto manual (el puntaje premia decidir a mano). El acierto/categoría sí son reales (los
+     * calcula el motor comparando la acción de la regla con la verdad del escenario) para poder
+     * mostrar honestamente si la regla acertó o abrió una brecha.
+     */
+    val automatizadaPor: AutomatizacionRegla? = null,
+) {
+    /** `true` si esta ronda la resolvió una regla del jugador en vez de una decisión manual. */
+    val automatizada: Boolean get() = automatizadaPor != null
+}
+
+/**
+ * Datos de la regla activa que resolvió una ronda automáticamente, para mostrarlos en la tarjeta
+ * "🤖 Automatizado por tu regla". Es solo presentación (no es la entidad de Room).
+ */
+data class AutomatizacionRegla(
+    /** Puerto de la regla que casó con el escenario. */
+    val puerto: Int,
+    /** IP de la regla, o `null` si la regla aplica a cualquier IP (comodín). */
+    val ip: String?,
+    /** Acción de la regla, en texto para el jugador: "Permitir" o "Bloquear". */
+    val accionTexto: String,
 )
 
 /**
