@@ -1,5 +1,6 @@
 package com.ejemplo.nettycoon.ui.ataque
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -149,13 +153,19 @@ fun AtaqueEnVivoScreen(
 
                         // La ronda la resolvió una regla del jugador.
                         resultado.automatizada -> {
-                            TarjetaAutomatizada(resultado = resultado)
+                            TarjetaAutomatizada(
+                                resultado = resultado,
+                                explicacion = escenario.explicacionAmpliada,
+                            )
                             BotonSiguiente(onSiguienteAtaque = onSiguienteAtaque)
                         }
 
                         // Decisión manual: veredicto (+ posible sugerencia del puente).
                         else -> {
-                            TarjetaVeredicto(resultado = resultado)
+                            TarjetaVeredicto(
+                                resultado = resultado,
+                                explicacion = escenario.explicacionAmpliada,
+                            )
                             resultado.sugerencia?.let { sugerencia ->
                                 TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
                             }
@@ -420,7 +430,11 @@ private fun BotonesDecision(
  * como frenar un ataque).
  */
 @Composable
-private fun TarjetaVeredicto(resultado: ResultadoDecision, modifier: Modifier = Modifier) {
+private fun TarjetaVeredicto(
+    resultado: ResultadoDecision,
+    explicacion: String,
+    modifier: Modifier = Modifier,
+) {
     val colores = if (resultado.acierto) {
         CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -451,6 +465,40 @@ private fun TarjetaVeredicto(resultado: ResultadoDecision, modifier: Modifier = 
             FilaDato("Puntaje", conSigno(resultado.deltaPuntaje))
             FilaDato("Salud de la red", conSigno(resultado.deltaSalud))
             FilaDato("Dinero virtual", conSigno(resultado.deltaDinero))
+
+            SeccionPorQue(explicacion = explicacion)
+        }
+    }
+}
+
+/**
+ * Sección "¿Por qué?": profundidad OPCIONAL y no intrusiva. Colapsada por defecto; al pulsar
+ * despliega in-place (con [AnimatedVisibility], sin diálogo ni nueva pantalla) la explicación
+ * ampliada del concepto de ciberseguridad. Si [explicacion] está vacía, no se muestra nada (p. ej.
+ * escenarios de test/preview sin explicación redactada).
+ *
+ * El estado expandido es de composición (UI local): se recuerda con clave [explicacion] para
+ * COLAPSARSE automáticamente al cambiar de escenario, sin necesidad de tocar el ViewModel.
+ */
+@Composable
+private fun SeccionPorQue(explicacion: String, modifier: Modifier = Modifier) {
+    if (explicacion.isBlank()) return
+
+    var expandido by remember(explicacion) { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        TextButton(
+            onClick = { expandido = !expandido },
+            modifier = Modifier.align(Alignment.Start),
+        ) {
+            Text(if (expandido) "▾ ¿Por qué?" else "▸ ¿Por qué?")
+        }
+        AnimatedVisibility(visible = expandido) {
+            Text(
+                text = explicacion,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
@@ -483,7 +531,11 @@ private fun BotonSiguiente(onSiguienteAtaque: () -> Unit, modifier: Modifier = M
  * trabajó por él. Muestra qué regla actuó, cómo se resolvió el tráfico y si acertó o abrió brecha.
  */
 @Composable
-private fun TarjetaAutomatizada(resultado: ResultadoDecision, modifier: Modifier = Modifier) {
+private fun TarjetaAutomatizada(
+    resultado: ResultadoDecision,
+    explicacion: String,
+    modifier: Modifier = Modifier,
+) {
     val automatizacion = resultado.automatizadaPor ?: return
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -534,6 +586,8 @@ private fun TarjetaAutomatizada(resultado: ResultadoDecision, modifier: Modifier
                 "Las rondas automáticas no suman puntaje: el puntaje premia decidir a mano.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            SeccionPorQue(explicacion = explicacion)
         }
     }
 }
