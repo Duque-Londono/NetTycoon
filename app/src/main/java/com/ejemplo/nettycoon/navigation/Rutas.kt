@@ -23,6 +23,15 @@ sealed class Rutas(val ruta: String) {
     data object Onboarding : Rutas("onboarding")
 
     /**
+     * Revisita MANUAL del onboarding desde el panel ("Cómo se juega"). Reutiliza la misma
+     * `OnboardingScreen`, pero al terminar/saltar vuelve al panel (`popBackStack`): NO marca el flag
+     * "onboarding_visto" (ya está visto) ni altera la sesión. Es una ruta aparte de [Onboarding]
+     * precisamente porque su destino de salida es distinto, y así el flujo de primer contacto queda
+     * intacto.
+     */
+    data object OnboardingManual : Rutas("onboarding-manual")
+
+    /**
      * Pantalla de reglas de firewall. Recibe el `uid` del jugador como argumento de ruta:
      * así el destino es autocontenido (sobrevive a recreaciones del proceso sin depender de
      * un estado compartido) y el ViewModel no necesita consultar Firebase.
