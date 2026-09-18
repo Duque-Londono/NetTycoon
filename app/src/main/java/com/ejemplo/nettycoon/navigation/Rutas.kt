@@ -16,6 +16,13 @@ sealed class Rutas(val ruta: String) {
     data object Home : Rutas("home")
 
     /**
+     * Onboarding de primer contacto (carrusel pedagógico). Sin argumentos: es un destino
+     * transitorio al que el gate dirige solo cuando hay sesión y el flag "onboarding_visto"
+     * está en `false` (ver [decidirDestinoInicial]).
+     */
+    data object Onboarding : Rutas("onboarding")
+
+    /**
      * Pantalla de reglas de firewall. Recibe el `uid` del jugador como argumento de ruta:
      * así el destino es autocontenido (sobrevive a recreaciones del proceso sin depender de
      * un estado compartido) y el ViewModel no necesita consultar Firebase.

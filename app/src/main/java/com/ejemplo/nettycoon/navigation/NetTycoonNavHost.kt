@@ -15,6 +15,7 @@ import com.ejemplo.nettycoon.auth.AuthRepository
 import com.ejemplo.nettycoon.auth.AuthRepositoryFirebase
 import com.ejemplo.nettycoon.auth.AuthViewModel
 import com.ejemplo.nettycoon.auth.AuthViewModelFactory
+import com.ejemplo.nettycoon.data.local.prefs.PreferenciasOnboarding
 import com.ejemplo.nettycoon.ui.firewall.FirewallScreen
 import com.ejemplo.nettycoon.ui.firewall.FirewallViewModel
 import com.ejemplo.nettycoon.ui.firewall.FirewallViewModelFactory
@@ -23,6 +24,7 @@ import com.ejemplo.nettycoon.ui.ataque.AtaqueEnVivoViewModel
 import com.ejemplo.nettycoon.ui.ataque.AtaqueEnVivoViewModelFactory
 import com.ejemplo.nettycoon.ui.login.LoginScreen
 import com.ejemplo.nettycoon.ui.login.RegistroScreen
+import com.ejemplo.nettycoon.ui.onboarding.OnboardingScreen
 import com.ejemplo.nettycoon.ui.network.ConfigRedScreen
 import com.ejemplo.nettycoon.ui.network.ConfigRedViewModel
 import com.ejemplo.nettycoon.ui.network.ConfigRedViewModelFactory
@@ -49,9 +51,21 @@ fun NetTycoonNavHost(
 ) {
     val authViewModel: AuthViewModel = viewModel(factory = AuthViewModelFactory(repositorio))
 
-    // Gate: destino inicial según la sesión actual (evaluado una sola vez al componer).
+    // Flag "onboarding ya visto", por dispositivo/instalación (SharedPreferences, no Room ni uid).
+    val appContext = LocalContext.current.applicationContext
+    val prefsOnboarding = remember { PreferenciasOnboarding(appContext) }
+
+    // Destino tras un login/registro/bypass exitoso. Las TRES vías de entrada al juego usan esta
+    // misma helper para que el onboarding se comporte igual por cualquier vía (sin flujos
+    // divergentes). Se recalcula al invocarse, así respeta el flag ya marcado.
+    val destinoTrasEntrar = { destinoPostLogin(prefsOnboarding.onboardingVisto()) }
+
+    // Gate: destino inicial según la sesión actual y el flag (evaluado una sola vez al componer).
     val startDestination = remember {
-        if (authViewModel.haySesion()) Rutas.Home.ruta else Rutas.Login.ruta
+        decidirDestinoInicial(
+            haySesion = authViewModel.haySesion(),
+            onboardingVisto = prefsOnboarding.onboardingVisto(),
+        )
     }
 
     NavHost(
@@ -65,12 +79,12 @@ fun NetTycoonNavHost(
                 onNavegarARegistro = { navController.navigate(Rutas.Registro.ruta) },
                 onAuthExitoso = {
                     authViewModel.consumirExito()
-                    navController.navigate(Rutas.Home.ruta) {
+                    navController.navigate(destinoTrasEntrar()) {
                         popUpTo(Rutas.Login.ruta) { inclusive = true }
                     }
                 },
                 onBypassDev = {
-                    navController.navigate(Rutas.Home.ruta) {
+                    navController.navigate(destinoTrasEntrar()) {
                         popUpTo(Rutas.Login.ruta) { inclusive = true }
                     }
                 },
@@ -83,8 +97,25 @@ fun NetTycoonNavHost(
                 onVolverALogin = { navController.popBackStack() },
                 onAuthExitoso = {
                     authViewModel.consumirExito()
-                    navController.navigate(Rutas.Home.ruta) {
+                    navController.navigate(destinoTrasEntrar()) {
                         popUpTo(Rutas.Login.ruta) { inclusive = true }
+                    }
+                },
+            )
+        }
+
+        composable(Rutas.Onboarding.ruta) {
+            OnboardingScreen(
+                onTerminar = {
+                    prefsOnboarding.marcarOnboardingVisto()
+                    navController.navigate(Rutas.Home.ruta) {
+                        popUpTo(Rutas.Onboarding.ruta) { inclusive = true }
+                    }
+                },
+                onSaltar = {
+                    prefsOnboarding.marcarOnboardingVisto()
+                    navController.navigate(Rutas.Home.ruta) {
+                        popUpTo(Rutas.Onboarding.ruta) { inclusive = true }
                     }
                 },
             )
