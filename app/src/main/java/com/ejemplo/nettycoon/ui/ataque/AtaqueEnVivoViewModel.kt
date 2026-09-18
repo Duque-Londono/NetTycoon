@@ -8,7 +8,11 @@ import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ConsecuenciasPartida
+import com.ejemplo.nettycoon.domain.firewall.MotorFirewall
+import com.ejemplo.nettycoon.domain.firewall.aReglasEvaluables
+import com.ejemplo.nettycoon.domain.model.Ataque
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
 import com.ejemplo.nettycoon.domain.model.ResultadoEvaluacion
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +32,13 @@ import kotlinx.coroutines.launch
  * del jugador y delega el cálculo de puntaje/salud/dinero/nivel en [ConsecuenciasPartida.aplicar].
  * Los escenarios NO vienen del generador aleatorio, sino de un catálogo pedagógico fijo.
  *
+ * **Puente automatizado (reglas → juego):** antes de pedir decisión, comprueba si alguna REGLA
+ * ACTIVA del jugador aplica al escenario, reutilizando [MotorFirewall] (matching por puerto/IP,
+ * precedencia DENY). Solo automatiza si una regla real casó ([ResultadoEvaluacion.reglaCoincidente]
+ * `!= null`); NO deja que el default-DENY del motor auto-decida (eso mataría el juego manual). Una
+ * ronda automatizada se muestra en una tarjeta aparte y NO afecta puntaje/contadores/puente, pero
+ * SÍ se registra como [EventoAtaque] para un historial veraz.
+ *
  * **Niveles + progresión:** el jugador elige un [Dificultad] antes de jugar; el ViewModel sirve solo
  * escenarios de ese nivel y avanza dentro de él con una PROGRESIÓN en memoria (del más simple al
  * menos obvio, según el orden del catálogo). El [seleccionarSiguiente] elige el índice del próximo
@@ -42,6 +53,7 @@ class AtaqueEnVivoViewModel(
     private val uid: String,
     private val partidaRepo: PartidaRepository,
     private val eventoRepo: EventoAtaqueRepository,
+    private val reglaRepo: ReglaFirewallRepository,
     private val escenarios: List<EscenarioAtaque> = CatalogoAtaques.escenarios,
     nivelInicial: Dificultad? = null,
     private val seleccionarSiguiente: (actual: Int?, total: Int) -> Int = ::progresionSecuencial,
@@ -109,6 +121,7 @@ class AtaqueEnVivoViewModel(
                 ultimoResultado = null,
                 aciertos = 0,
                 rondas = 0,
+                evaluandoRegla = false,
             )
         }
     }
@@ -134,16 +147,19 @@ class AtaqueEnVivoViewModel(
         }
 
         posicion = seleccionarSiguiente(null, nivelEscenarios.size)
+        val primero = nivelEscenarios[posicion]
         _estado.update {
             it.copy(
                 nivel = nivel,
-                escenario = nivelEscenarios[posicion],
+                escenario = primero,
                 nivelCompletado = false,
                 ultimoResultado = null,
                 aciertos = 0,
                 rondas = 0,
+                evaluandoRegla = true,
             )
         }
+        evaluarAutomatizacion(primero)
     }
 
     /** El jugador decide dejar pasar el tráfico (ALLOW). */
@@ -195,12 +211,15 @@ class AtaqueEnVivoViewModel(
         )
 
         // Publicamos el veredicto de inmediato (feedback inmediato al jugador) y persistimos.
+        // Al ser una decisión manual, dejamos de "evaluar reglas" (si la comprobación seguía en
+        // curso, esta decisión gana y la corrutina de evaluación no la pisará).
         _estado.update {
             it.copy(
                 partida = actualizada,
                 ultimoResultado = veredicto,
                 aciertos = it.aciertos + if (acierto) 1 else 0,
                 rondas = it.rondas + 1,
+                evaluandoRegla = false,
             )
         }
 
@@ -277,8 +296,102 @@ class AtaqueEnVivoViewModel(
             return
         }
         posicion = siguiente
+        val escenario = nivelEscenarios[siguiente]
         _estado.update {
-            it.copy(escenario = nivelEscenarios[siguiente], ultimoResultado = null)
+            it.copy(escenario = escenario, ultimoResultado = null, evaluandoRegla = true)
+        }
+        evaluarAutomatizacion(escenario)
+    }
+
+    /**
+     * Comprueba, ANTES de pedir decisión al jugador, si alguna regla activa suya resuelve el
+     * [escenario]. Reutiliza [MotorFirewall] (matching + precedencia DENY) sobre las reglas activas
+     * del uid. Solo automatiza si una regla real casó ([ResultadoEvaluacion.reglaCoincidente] no
+     * nulo); si ninguna aplica, NO deja que el default-DENY del motor decida: baja [evaluandoRegla]
+     * y se dejan los botones para decisión manual (como hoy).
+     *
+     * Es defensiva ante carreras: si al terminar la lectura el escenario cambió o ya hay una
+     * decisión (p. ej. manual), no publica nada.
+     */
+    private fun evaluarAutomatizacion(escenario: EscenarioAtaque) {
+        viewModelScope.launch {
+            val reglas = try {
+                reglaRepo.obtenerReglasActivas(uid)
+            } catch (e: Exception) {
+                // Si no se pueden leer las reglas, se juega a mano (no bloqueamos el juego).
+                emptyList()
+            }
+
+            // Si mientras leíamos cambió el escenario o el jugador ya decidió, no hacemos nada.
+            if (_estado.value.escenario != escenario || _estado.value.ultimoResultado != null) return@launch
+
+            val evaluacion = MotorFirewall.evaluar(
+                ataque = Ataque(
+                    ipAtacante = escenario.ipAtacante,
+                    puertoDestino = escenario.puerto,
+                    esMalicioso = escenario.esMalicioso,
+                ),
+                reglas = reglas.aReglasEvaluables(),
+            )
+            val regla = evaluacion.reglaCoincidente
+
+            // Ninguna regla del jugador casó: se decide a mano (el default-DENY del motor NO cuenta).
+            if (regla == null) {
+                _estado.update {
+                    if (it.escenario == escenario && it.ultimoResultado == null) {
+                        it.copy(evaluandoRegla = false)
+                    } else {
+                        it
+                    }
+                }
+                return@launch
+            }
+
+            // Una regla real casó: la ronda se resuelve sola. NO toca puntaje/salud/dinero ni los
+            // contadores/puente; el acierto/categoría los da el motor (verdad del escenario vs. acción).
+            val bloquear = evaluacion.accionAplicada == AccionFirewall.DENY
+            val veredicto = ResultadoDecision(
+                acierto = evaluacion.acierto,
+                categoria = evaluacion.categoria,
+                resultadoEvento = evaluacion.resultado,
+                leccion = if (evaluacion.acierto) escenario.leccionAcierto else escenario.leccionError,
+                deltaPuntaje = 0,
+                deltaSalud = 0,
+                deltaDinero = 0,
+                sugerencia = null,
+                automatizadaPor = AutomatizacionRegla(
+                    puerto = regla.puerto,
+                    ip = regla.ip,
+                    accionTexto = if (bloquear) "Bloquear" else "Permitir",
+                ),
+            )
+
+            _estado.update {
+                if (it.escenario == escenario && it.ultimoResultado == null) {
+                    it.copy(ultimoResultado = veredicto, evaluandoRegla = false)
+                } else {
+                    it
+                }
+            }
+
+            // Historial veraz en Room: registramos el evento resuelto por la regla, sin afectar
+            // métricas (la partida NO se modifica en rondas automatizadas).
+            try {
+                eventoRepo.registrarEvento(
+                    EventoAtaque(
+                        owner = uid,
+                        ipAtacante = escenario.ipAtacante,
+                        puertoDestino = escenario.puerto,
+                        pais = escenario.pais,
+                        isp = escenario.isp,
+                        resultado = evaluacion.resultado,
+                        acierto = evaluacion.acierto,
+                        ocurridoEn = System.currentTimeMillis(),
+                    ),
+                )
+            } catch (e: Exception) {
+                _estado.update { it.copy(error = mensajeDeError("guardar el resultado automático", e)) }
+            }
         }
     }
 

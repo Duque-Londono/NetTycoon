@@ -136,22 +136,30 @@ fun AtaqueEnVivoScreen(
                     }
 
                     val resultado = estado.ultimoResultado
-                    if (resultado == null) {
-                        BotonesDecision(
+                    when {
+                        // Comprobando si una regla del jugador resuelve el escenario (antes de decidir).
+                        estado.evaluandoRegla && resultado == null -> IndicadorEvaluandoRegla()
+
+                        // Aún sin decidir: se pregunta a mano.
+                        resultado == null -> BotonesDecision(
                             habilitado = !estado.cargando && estado.partida != null,
                             onPermitir = onPermitir,
                             onBloquear = onBloquear,
                         )
-                    } else {
-                        TarjetaVeredicto(resultado = resultado)
-                        resultado.sugerencia?.let { sugerencia ->
-                            TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+
+                        // La ronda la resolvió una regla del jugador.
+                        resultado.automatizada -> {
+                            TarjetaAutomatizada(resultado = resultado)
+                            BotonSiguiente(onSiguienteAtaque = onSiguienteAtaque)
                         }
-                        Button(
-                            onClick = onSiguienteAtaque,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Siguiente ataque")
+
+                        // Decisión manual: veredicto (+ posible sugerencia del puente).
+                        else -> {
+                            TarjetaVeredicto(resultado = resultado)
+                            resultado.sugerencia?.let { sugerencia ->
+                                TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+                            }
+                            BotonSiguiente(onSiguienteAtaque = onSiguienteAtaque)
                         }
                     }
                 }
@@ -447,6 +455,89 @@ private fun TarjetaVeredicto(resultado: ResultadoDecision, modifier: Modifier = 
     }
 }
 
+/** Indicador breve mientras se comprueba si una regla del jugador resuelve el escenario. */
+@Composable
+private fun IndicadorEvaluandoRegla(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator()
+        Text("Comprobando tus reglas…", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** Botón para avanzar al siguiente escenario (común a rondas manuales y automatizadas). */
+@Composable
+private fun BotonSiguiente(onSiguienteAtaque: () -> Unit, modifier: Modifier = Modifier) {
+    Button(onClick = onSiguienteAtaque, modifier = modifier.fillMaxWidth()) {
+        Text("Siguiente ataque")
+    }
+}
+
+/**
+ * Tarjeta "🤖 Automatizado por tu regla": la ronda la resolvió una regla activa del jugador, no una
+ * decisión manual. Es intencionadamente DISTINTA del veredicto manual (encabezado y tono propios,
+ * sin sección "Efecto en tu red" porque no afecta métricas) para que el jugador NOTE que su regla
+ * trabajó por él. Muestra qué regla actuó, cómo se resolvió el tráfico y si acertó o abrió brecha.
+ */
+@Composable
+private fun TarjetaAutomatizada(resultado: ResultadoDecision, modifier: Modifier = Modifier) {
+    val automatizacion = resultado.automatizadaPor ?: return
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "🤖 Automatizado por tu regla",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Tu firewall decidió solo con una regla que creaste: no tuviste que intervenir.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            Text(
+                "La regla que actuó",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            FilaDato("Puerto", automatizacion.puerto.toString())
+            FilaDato("IP", automatizacion.ip ?: "Cualquiera")
+            FilaDato("Acción", automatizacion.accionTexto)
+            FilaDato(
+                "Resultado",
+                if (resultado.resultadoEvento == com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.BLOQUEADO) {
+                    "Bloqueado"
+                } else {
+                    "Permitido"
+                },
+            )
+
+            // Estado claro y visible: acierto vs. brecha/falso positivo (aunque no afecte métricas).
+            Text(
+                if (resultado.acierto) "✅ Tu regla acertó" else "❌ Tu regla falló",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Las rondas automáticas no suman puntaje: el puntaje premia decidir a mano.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
 /**
  * Tarjeta de "consejo": el puente hacia las reglas. Tono distinto del veredicto (que celebra o
  * corrige) y de la pista (que informa antes de decidir): usa el color terciario para sentirse como
@@ -639,6 +730,74 @@ private fun AtaqueEnVivoConSugerenciaPreview() {
                             "acertaste. Cuando reconoces un patrón, puedes crear una REGLA para " +
                             "que el firewall lo haga solo. Ve a 'Mis reglas' y crea una regla: " +
                             "puerto ${escenarioDemoMalicioso.puerto}, acción Bloquear.",
+                    ),
+                ),
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Automatizado por regla (acierto)")
+@Composable
+private fun AtaqueEnVivoAutomatizadoPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoMalicioso,
+                nivel = Dificultad.MEDIO,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 2,
+                rondas = 4,
+                ultimoResultado = ResultadoDecision(
+                    acierto = true,
+                    categoria = CategoriaResultado.BLOQUEO_CORRECTO,
+                    resultadoEvento = com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.BLOQUEADO,
+                    leccion = escenarioDemoMalicioso.leccionAcierto,
+                    deltaPuntaje = 0,
+                    deltaSalud = 0,
+                    deltaDinero = 0,
+                    automatizadaPor = AutomatizacionRegla(
+                        puerto = escenarioDemoMalicioso.puerto,
+                        ip = null,
+                        accionTexto = "Bloquear",
+                    ),
+                ),
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Automatizado por regla (brecha)")
+@Composable
+private fun AtaqueEnVivoAutomatizadoBrechaPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoMalicioso,
+                nivel = Dificultad.MEDIO,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 2,
+                rondas = 4,
+                ultimoResultado = ResultadoDecision(
+                    acierto = false,
+                    categoria = CategoriaResultado.BRECHA,
+                    resultadoEvento = com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.PERMITIDO,
+                    leccion = escenarioDemoMalicioso.leccionError,
+                    deltaPuntaje = 0,
+                    deltaSalud = 0,
+                    deltaDinero = 0,
+                    automatizadaPor = AutomatizacionRegla(
+                        puerto = escenarioDemoMalicioso.puerto,
+                        ip = null,
+                        accionTexto = "Permitir",
                     ),
                 ),
             ),
