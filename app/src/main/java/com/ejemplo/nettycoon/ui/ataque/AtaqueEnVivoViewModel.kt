@@ -263,6 +263,9 @@ class AtaqueEnVivoViewModel(
         acierto: Boolean,
     ): SugerenciaRegla? {
         if (!acierto) return null
+        // Imposible apaga las ayudas: la sugerencia de automatizar ni se genera (la auto-aplicación
+        // de reglas ya existentes sí sigue actuando, eso es consistencia del firewall, no una ayuda).
+        if (_estado.value.nivel == Dificultad.IMPOSIBLE) return null
 
         val familia = MapeoFamilias.familiaDe(escenario.puerto)
         val patron = familia to accion

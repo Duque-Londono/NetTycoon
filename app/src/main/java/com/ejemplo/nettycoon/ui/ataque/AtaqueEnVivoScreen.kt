@@ -128,11 +128,15 @@ fun AtaqueEnVivoScreen(
                 // Jugando: hay un escenario que decidir.
                 estado.escenario != null -> {
                     val escenario = estado.escenario
+                    // Modo "pelado" del examen final: en Imposible se apaga TODO el material
+                    // educativo (servicio, situación, pista, lección, "¿Por qué?"). Solo afecta a
+                    // este nivel; 1-3 quedan intactos.
+                    val pelado = estado.nivel == Dificultad.IMPOSIBLE
                     CabeceraNivel(nivel = estado.nivel, onCambiarNivel = onCambiarNivel)
                     TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
 
-                    TarjetaSituacion(escenario = escenario)
-                    TarjetaPista(pista = escenario.textoPista)
+                    TarjetaSituacion(escenario = escenario, pelado = pelado)
+                    if (!pelado) TarjetaPista(pista = escenario.textoPista)
 
                     if (estado.cargando) {
                         Row(
@@ -168,6 +172,7 @@ fun AtaqueEnVivoScreen(
                             TarjetaAutomatizada(
                                 resultado = resultado,
                                 explicacion = escenario.explicacionAmpliada,
+                                pelado = pelado,
                             )
                             BotonSiguiente(onSiguienteAtaque = onSiguienteAtaque)
                         }
@@ -177,6 +182,7 @@ fun AtaqueEnVivoScreen(
                             TarjetaVeredicto(
                                 resultado = resultado,
                                 explicacion = escenario.explicacionAmpliada,
+                                pelado = pelado,
                             )
                             resultado.sugerencia?.let { sugerencia ->
                                 TarjetaSugerencia(
@@ -200,6 +206,7 @@ private fun Dificultad.etiqueta(): String = when (this) {
     Dificultad.FACIL -> "Fácil"
     Dificultad.MEDIO -> "Medio"
     Dificultad.DIFICIL -> "Difícil"
+    Dificultad.IMPOSIBLE -> "Imposible"
 }
 
 /**
@@ -237,6 +244,17 @@ private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifie
                 titulo = "Difícil",
                 descripcion = "Casos con trampa: lo que parece sospechoso puede ser legítimo (y al revés).",
                 onClick = { onElegirNivel(Dificultad.DIFICIL) },
+            )
+            // COPY BORRADOR (validación del equipo): descripción + advertencia del nivel Imposible.
+            OpcionNivel(
+                titulo = "Imposible",
+                descripcion = "Sin ayudas: solo puerto e IP/país/ISP en crudo. Decides a ciegas.",
+                onClick = { onElegirNivel(Dificultad.IMPOSIBLE) },
+            )
+            Text(
+                "⚠️ Examen final: sin servicio, sin pista, sin explicación.",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
             )
         }
     }
@@ -360,16 +378,34 @@ private fun TarjetaContador(aciertos: Int, rondas: Int, modifier: Modifier = Mod
     }
 }
 
+/**
+ * Tarjeta de situación. En modo [pelado] (nivel Imposible) se apaga el material educativo: sin
+ * texto de situación ni fila "Servicio", solo el contexto EN CRUDO (puerto + IP + país + ISP), sin
+ * interpretar ni etiquetar. En los niveles 1-3 se muestra completa como siempre.
+ */
 @Composable
-private fun TarjetaSituacion(escenario: EscenarioAtaque, modifier: Modifier = Modifier) {
+private fun TarjetaSituacion(
+    escenario: EscenarioAtaque,
+    pelado: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Situación", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(escenario.textoSituacion, style = MaterialTheme.typography.bodyLarge)
-            FilaDato("Servicio", escenario.servicioNombre)
+            if (pelado) {
+                // COPY BORRADOR (validación del equipo): encabezado de la ronda pelada.
+                Text(
+                    "Contexto en crudo",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                Text("Situación", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(escenario.textoSituacion, style = MaterialTheme.typography.bodyLarge)
+                FilaDato("Servicio", escenario.servicioNombre)
+            }
             FilaDato("Puerto", escenario.puerto.toString())
             FilaDato("IP origen", escenario.ipAtacante)
             FilaDato("País", escenario.pais)
@@ -450,6 +486,7 @@ private fun BotonesDecision(
 private fun TarjetaVeredicto(
     resultado: ResultadoDecision,
     explicacion: String,
+    pelado: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colores = if (resultado.acierto) {
@@ -473,7 +510,9 @@ private fun TarjetaVeredicto(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
-            Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
+            // En Imposible se conserva el MARCADOR (acierto + efecto en la red) pero se apaga el
+            // material educativo: sin lección ni "¿Por qué?".
+            if (!pelado) Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
             Text(
                 "Efecto en tu red",
                 style = MaterialTheme.typography.titleSmall,
@@ -483,7 +522,7 @@ private fun TarjetaVeredicto(
             FilaDato("Salud de la red", conSigno(resultado.deltaSalud))
             FilaDato("Dinero virtual", conSigno(resultado.deltaDinero))
 
-            SeccionPorQue(explicacion = explicacion)
+            if (!pelado) SeccionPorQue(explicacion = explicacion)
         }
     }
 }
@@ -551,6 +590,7 @@ private fun BotonSiguiente(onSiguienteAtaque: () -> Unit, modifier: Modifier = M
 private fun TarjetaAutomatizada(
     resultado: ResultadoDecision,
     explicacion: String,
+    pelado: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val automatizacion = resultado.automatizadaPor ?: return
@@ -598,13 +638,15 @@ private fun TarjetaAutomatizada(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
+            // En Imposible se apaga la lección y el "¿Por qué?"; el resto (qué regla actuó y el
+            // resultado) se conserva para que el jugador vea que su regla trabajó.
+            if (!pelado) Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
             Text(
                 "Las rondas automáticas no suman puntaje: el puntaje premia decidir a mano.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
-            SeccionPorQue(explicacion = explicacion)
+            if (!pelado) SeccionPorQue(explicacion = explicacion)
         }
     }
 }
@@ -760,6 +802,8 @@ private fun conSigno(valor: Int): String = when {
 
 private val escenarioDemoMalicioso = CatalogoAtaques.escenarios[1] // SSH sospechoso.
 private val escenarioDemoLegitimo = CatalogoAtaques.escenarios[0] // HTTPS legítimo.
+private val escenarioDemoImposible =
+    CatalogoAtaques.escenarios.first { it.dificultad == Dificultad.IMPOSIBLE }
 
 @Preview(showBackground = true, name = "Sin decidir")
 @Composable
@@ -982,6 +1026,87 @@ private fun AtaqueEnVivoNivelCompletadoPreview() {
                 cargando = false,
                 aciertos = 7,
                 rondas = 9,
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Imposible · pelado sin decidir")
+@Composable
+private fun AtaqueEnVivoImposibleSinDecidirPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoImposible,
+                nivel = Dificultad.IMPOSIBLE,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 4,
+                rondas = 5,
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Imposible · pelado acierto")
+@Composable
+private fun AtaqueEnVivoImposibleAciertoPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoImposible,
+                nivel = Dificultad.IMPOSIBLE,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 5,
+                rondas = 5,
+                ultimoResultado = ResultadoDecision(
+                    acierto = true,
+                    categoria = CategoriaResultado.BLOQUEO_CORRECTO,
+                    resultadoEvento = com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.BLOQUEADO,
+                    leccion = escenarioDemoImposible.leccionAcierto, // oculta en pelado
+                    deltaPuntaje = 15,
+                    deltaSalud = 0,
+                    deltaDinero = 50,
+                ),
+            ),
+            onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
+            onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Imposible · pelado fallo")
+@Composable
+private fun AtaqueEnVivoImposibleFalloPreview() {
+    NetTycoonTheme {
+        AtaqueEnVivoScreen(
+            estado = AtaqueEnVivoUiState(
+                escenario = escenarioDemoImposible,
+                nivel = Dificultad.IMPOSIBLE,
+                partida = EstadoPartida(owner = "demo"),
+                cargando = false,
+                aciertos = 4,
+                rondas = 5,
+                ultimoResultado = ResultadoDecision(
+                    acierto = false,
+                    categoria = CategoriaResultado.BRECHA,
+                    resultadoEvento = com.ejemplo.nettycoon.data.local.entity.ResultadoEvento.PERMITIDO,
+                    leccion = escenarioDemoImposible.leccionError, // oculta en pelado
+                    deltaPuntaje = 0,
+                    deltaSalud = -20,
+                    deltaDinero = -100,
+                ),
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},

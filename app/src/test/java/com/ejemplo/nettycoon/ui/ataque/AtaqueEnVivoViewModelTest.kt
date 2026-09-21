@@ -61,6 +61,10 @@ class AtaqueEnVivoViewModelTest {
     /** Copia del escenario malicioso base cambiando solo el puerto (misma verdad: DENY = acierto). */
     private fun maliciosoEnPuerto(puerto: Int) = malicioso.copy(puerto = puerto)
 
+    /** Copia del escenario malicioso base como nivel IMPOSIBLE, con puerto opcional. */
+    private fun imposibleEnPuerto(puerto: Int) =
+        malicioso.copy(puerto = puerto, dificultad = Dificultad.IMPOSIBLE)
+
     @Before
     fun configurarDispatcher() {
         Dispatchers.setMain(dispatcher)
@@ -696,6 +700,101 @@ class AtaqueEnVivoViewModelTest {
             assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
             assertNotNull(vm.estado.value.avisoReglas)
         }
+
+    // --- Fase 6: nivel IMPOSIBLE (examen final "pelado") ---
+
+    @Test
+    fun `nivel IMPOSIBLE sirve solo escenarios IMPOSIBLE, en orden, hasta completar`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            val vm = vmConNivel(partidaDao, eventoDao, nivelInicial = Dificultad.IMPOSIBLE)
+            advanceUntilIdle()
+
+            val esperados = CatalogoAtaques.escenarios.filter { it.dificultad == Dificultad.IMPOSIBLE }
+            val vistos = mutableListOf<EscenarioAtaque>()
+
+            var guarda = 0
+            while (!vm.estado.value.nivelCompletado && guarda++ < 100) {
+                val esc = vm.estado.value.escenario!!
+                assertEquals(Dificultad.IMPOSIBLE, esc.dificultad)
+                vistos.add(esc)
+                vm.onBloquear()
+                advanceUntilIdle()
+                vm.onSiguienteAtaque()
+            }
+
+            assertTrue(vm.estado.value.nivelCompletado)
+            assertNull(vm.estado.value.escenario)
+            assertEquals(esperados, vistos)
+        }
+
+    @Test
+    fun `decidir en Imposible aplica consecuencias y registra evento (marcador vivo)`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Escenario IMPOSIBLE malicioso en el 22: bloquear = acierto.
+            val vm = crearViewModel(
+                partidaDao, eventoDao, listOf(imposibleEnPuerto(22)),
+                nivel = Dificultad.IMPOSIBLE, seleccionar = { _, _ -> 0 },
+            )
+            advanceUntilIdle()
+
+            vm.onBloquear()
+            advanceUntilIdle()
+
+            val resultado = vm.estado.value.ultimoResultado!!
+            assertTrue(resultado.acierto)
+            // El marcador NO se apaga en Imposible: los deltas se aplican igual que en 1-3.
+            assertEquals(15, resultado.deltaPuntaje)
+            assertEquals(50, resultado.deltaDinero)
+            assertEquals(1, vm.estado.value.rondas)
+            // Y el evento se registra (para que Estadísticas lo cuente).
+            assertEquals(1, eventoDao.insertados.size)
+            assertEquals(22, eventoDao.insertados.first().puertoDestino)
+            assertTrue(eventoDao.insertados.first().acierto)
+        }
+
+    @Test
+    fun `el puente NO sugiere en Imposible aunque se repita la familia`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // 3 puertos distintos de "Bases de datos", todos IMPOSIBLE y maliciosos (DENY = acierto).
+        val escenarios = listOf(
+            imposibleEnPuerto(3306), imposibleEnPuerto(5432), imposibleEnPuerto(27017),
+        )
+        val vm = crearViewModel(
+            partidaDao, eventoDao, escenarios,
+            nivel = Dificultad.IMPOSIBLE, seleccionar = { actual, _ -> (actual ?: -1) + 1 },
+        )
+        advanceUntilIdle()
+
+        // Tres aciertos de la misma familia: en cualquier otro nivel dispararía; en Imposible no.
+        repeat(3) {
+            vm.onBloquear()
+            advanceUntilIdle()
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+            if (it < 2) vm.onSiguienteAtaque()
+        }
+    }
+
+    @Test
+    fun `la auto-aplicacion de reglas SI actua en Imposible (consistencia)`() = runTest(dispatcher) {
+        val (partidaDao, eventoDao) = contexto()
+        // Regla DENY en el 22; escenario IMPOSIBLE malicioso en el 22 → la regla resuelve la ronda.
+        val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(22, AccionFirewall.DENY)))
+        val vm = crearViewModel(
+            partidaDao, eventoDao, listOf(imposibleEnPuerto(22)),
+            nivel = Dificultad.IMPOSIBLE, seleccionar = { _, _ -> 0 }, reglaDao = reglaDao,
+        )
+        advanceUntilIdle()
+
+        val resultado = vm.estado.value.ultimoResultado!!
+        assertTrue(resultado.automatizada)
+        assertTrue(resultado.acierto)
+        assertEquals(22, resultado.automatizadaPor!!.puerto)
+        // Se registra el evento (historial veraz), como en los demás niveles.
+        assertEquals(1, eventoDao.insertados.size)
+        assertEquals(22, eventoDao.insertados.first().puertoDestino)
+    }
 
     private companion object {
         /** Copia local del umbral del puente para no acoplar el test al valor exacto. */
