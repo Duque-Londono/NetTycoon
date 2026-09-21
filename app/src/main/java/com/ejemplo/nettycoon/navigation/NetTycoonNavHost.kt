@@ -28,6 +28,9 @@ import com.ejemplo.nettycoon.ui.onboarding.OnboardingScreen
 import com.ejemplo.nettycoon.ui.network.ConfigRedScreen
 import com.ejemplo.nettycoon.ui.network.ConfigRedViewModel
 import com.ejemplo.nettycoon.ui.network.ConfigRedViewModelFactory
+import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasScreen
+import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasViewModel
+import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasViewModelFactory
 import com.ejemplo.nettycoon.ui.panel.PanelScreen
 import com.ejemplo.nettycoon.ui.panel.PanelViewModel
 import com.ejemplo.nettycoon.ui.panel.PanelViewModelFactory
@@ -144,6 +147,7 @@ fun NetTycoonNavHost(
                 onIrAAtaqueEnVivo = { navController.navigate(Rutas.AtaqueEnVivo.crearRuta(uid)) },
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
                 onIrAConfigRed = { navController.navigate(Rutas.ConfigRed.crearRuta(uid)) },
+                onIrAEstadisticas = { navController.navigate(Rutas.Estadisticas.crearRuta(uid)) },
                 onVerOnboarding = { navController.navigate(Rutas.OnboardingManual.ruta) },
                 onCerrarSesion = {
                     authViewModel.cerrarSesion()
@@ -203,6 +207,23 @@ fun NetTycoonNavHost(
             AtaqueEnVivoScreen(
                 viewModel = ataqueViewModel,
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
+                onVolver = { navController.popBackStack() },
+            )
+        }
+
+        // Destino con argumento de ruta (mismo patrón que las demás): el uid viaja en la ruta,
+        // así la pantalla es autocontenida y su ViewModel no necesita consultar Firebase.
+        composable(
+            route = Rutas.Estadisticas.ruta,
+            arguments = listOf(navArgument(Rutas.ARG_UID) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val context = LocalContext.current.applicationContext
+            val uid = backStackEntry.arguments?.getString(Rutas.ARG_UID).orEmpty()
+            val estadisticasViewModel: EstadisticasViewModel = viewModel(
+                factory = EstadisticasViewModelFactory(context, uid),
+            )
+            EstadisticasScreen(
+                viewModel = estadisticasViewModel,
                 onVolver = { navController.popBackStack() },
             )
         }
