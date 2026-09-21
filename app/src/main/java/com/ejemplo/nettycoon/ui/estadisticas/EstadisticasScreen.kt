@@ -144,7 +144,7 @@ private fun SeccionFamilias(titulo: String, familias: List<FamiliaResumen>) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
                 titulo,
@@ -152,10 +152,20 @@ private fun SeccionFamilias(titulo: String, familias: List<FamiliaResumen>) {
                 fontWeight = FontWeight.Bold,
             )
             familias.forEach { familia ->
-                FilaMetrica(
-                    etiqueta = familia.nombre,
-                    valor = "${familia.aciertoPct}% (${familia.aciertos}/${familia.total})",
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    FilaMetrica(
+                        etiqueta = familia.nombre,
+                        valor = "${familia.aciertoPct}% (${familia.aciertos}/${familia.total})",
+                    )
+                    // Descripción de una línea (PLACEHOLDER, a validar por el equipo).
+                    MapeoFamilias.descripcionDe(familia.nombre)?.let { descripcion ->
+                        Text(
+                            descripcion,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }
