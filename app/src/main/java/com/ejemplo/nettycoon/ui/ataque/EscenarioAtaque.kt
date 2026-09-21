@@ -546,5 +546,154 @@ object CatalogoAtaques {
             dificultad = Dificultad.DIFICIL,
             explicacionAmpliada = "El correo en sí es legítimo (ya viste el 587 para enviar), pero aquí el patrón no cuadra: el puerto 25 abierto y, desde fuera, alguien lanzando miles de correos en poco tiempo. Eso suele ser un bot aprovechando tu red para repartir spam, como un desconocido usando tu dirección de remitente para inundar buzones ajenos. Bloquearlo es correcto porque el servicio es normal, pero el comportamiento es abuso. Si lo permites, además del daño a otros, tu dominio y tus IP pueden acabar en listas negras y entonces tus correos legítimos dejan de llegar. En la vida real hay que mirar el comportamiento, no solo el servicio: 'es correo' no significa 'es bueno'.",
         ),
+
+        // ========================================================================================
+        // NIVEL IMPOSIBLE (escenarios 31-39) · BORRADOR PARA VALIDACIÓN DEL EQUIPO.
+        //
+        // En este nivel la UI apaga TODO el material educativo: solo se ve puerto + IP + país +
+        // ISP en crudo. Por eso el único "tell" vive en ese triplete (y en el puerto). Regla de
+        // calidad aplicada: ningún malicioso sin una señal detectable en el triplete; ningún
+        // legítimo con una señal fuerte que induzca falso positivo.
+        //
+        // textoPista y explicacionAmpliada van vacíos a propósito (se ocultan). textoSituacion no
+        // se muestra en Imposible; se deja una nota mínima. leccionAcierto/Error son breves: no se
+        // muestran en pantalla, pero viajan al historial por coherencia con los demás niveles.
+        // La mezcla (5 maliciosos / 4 legítimos) y los datos concretos son BORRADOR.
+        // ========================================================================================
+
+        // 31 · TRAMPA EN FAMILIA DE CONFIANZA · 443 (Web) desde hosting · MALICIOSO
+        EscenarioAtaque(
+            ipAtacante = "45.135.232.18",
+            pais = "Seychelles",
+            isp = "Hosting VPS anónimo",
+            puerto = 443,
+            servicioNombre = "HTTPS / web segura",
+            esMalicioso = true,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "El 443 suele ser legítimo, pero el origen (VPS anónimo en paraíso fiscal) delata abuso.",
+            leccionError = "Un puerto de confianza desde un hosting anónimo no basta para fiarse: mira el origen.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 32 · TRAMPA EN FAMILIA DE CONFIANZA · 587 (Correo) desde origen anónimo · MALICIOSO
+        EscenarioAtaque(
+            ipAtacante = "185.220.101.44",
+            pais = "Desconocido",
+            isp = "Servidor anónimo",
+            puerto = 587,
+            servicioNombre = "SMTP / envío de correo",
+            esMalicioso = true,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "Puerto de correo legítimo, pero desde ISP/país anónimos: origen incoherente con envío propio.",
+            leccionError = "El envío de correo legítimo sale de tu servidor, no de un origen anónimo desconocido.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 33 · LEGÍTIMO QUE ASUSTA · 5060 (VoIP, puerto raro) desde proveedor conocido · LEGÍTIMO
+        EscenarioAtaque(
+            ipAtacante = "212.83.140.9",
+            pais = "España",
+            isp = "Telefónica Empresas",
+            puerto = 5060,
+            servicioNombre = "VoIP / telefonía (SIP)",
+            esMalicioso = false,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "Puerto poco común, pero ISP y país coherentes con el proveedor de telefonía contratado.",
+            leccionError = "Falso positivo: un puerto raro con origen corporativo coherente es la telefonía funcionando.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 34 · LEGÍTIMO QUE ASUSTA · 8080 (app interna) desde red local · LEGÍTIMO
+        EscenarioAtaque(
+            ipAtacante = "10.0.4.27",
+            pais = "Red local (oficina)",
+            isp = "Interno",
+            puerto = 8080,
+            servicioNombre = "Aplicación web interna",
+            esMalicioso = false,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "El origen es una IP privada (10.x) de tu propia red: tráfico interno legítimo.",
+            leccionError = "Falso positivo: bloqueaste una app interna; el origen local lo dejaba claro.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 35 · MALICIOSO DE MANUAL, TELL SUTIL · 22 (SSH) desde VPS lejano · MALICIOSO
+        EscenarioAtaque(
+            ipAtacante = "104.244.72.115",
+            pais = "Moldavia",
+            isp = "Hosting VPS",
+            puerto = 22,
+            servicioNombre = "SSH / acceso remoto",
+            esMalicioso = true,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "SSH entrante desde un VPS de un país sin relación con la empresa: acceso no autorizado.",
+            leccionError = "Peligro: control remoto abierto a un desconocido en un hosting lejano.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 36 · MALICIOSO DE MANUAL, TELL SUTIL · 3306 (MySQL) desde hosting · MALICIOSO
+        EscenarioAtaque(
+            ipAtacante = "159.203.88.7",
+            pais = "Estados Unidos",
+            isp = "DigitalOcean (hosting)",
+            puerto = 3306,
+            servicioNombre = "MySQL / base de datos",
+            esMalicioso = true,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "Una base de datos nunca debe recibir conexiones directas desde un hosting externo.",
+            leccionError = "Grave: expusiste la base de datos a una IP de hosting de internet.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 37 · AMBIGUO · 443 desde país lejano pero ISP residencial conocido · LEGÍTIMO
+        EscenarioAtaque(
+            ipAtacante = "126.51.203.66",
+            pais = "Japón",
+            isp = "NTT Docomo (residencial)",
+            puerto = 443,
+            servicioNombre = "HTTPS / web segura",
+            esMalicioso = false,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "País lejano, sí, pero ISP residencial y puerto web normal: un usuario real de viaje.",
+            leccionError = "Falso positivo: el país por sí solo no es un ataque si el resto del origen es coherente.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 38 · AMBIGUO · 993 (IMAP) desde ISP corporativo esperado · LEGÍTIMO
+        EscenarioAtaque(
+            ipAtacante = "80.58.61.250",
+            pais = "España",
+            isp = "Movistar",
+            puerto = 993,
+            servicioNombre = "IMAP / recibir correo (cifrado)",
+            esMalicioso = false,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "Correo cifrado entrante desde un ISP residencial del país de la empresa: rutina de oficina.",
+            leccionError = "Falso positivo: cortaste la recepción de correo de un usuario legítimo.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
+
+        // 39 · AMBIGUO (techo) · 53 (DNS) desde hosting con país incongruente · MALICIOSO
+        EscenarioAtaque(
+            ipAtacante = "193.201.9.152",
+            pais = "Rusia",
+            isp = "Hosting anónimo",
+            puerto = 53,
+            servicioNombre = "DNS / resolución de nombres",
+            esMalicioso = true,
+            textoSituacion = "(oculto en Imposible)",
+            textoPista = "",
+            leccionAcierto = "DNS suele permitirse, pero un servidor de nombres externo en un hosting anónimo puede ser túnel de datos.",
+            leccionError = "Riesgo: DNS hacia un hosting anónimo extranjero puede camuflar exfiltración de datos.",
+            dificultad = Dificultad.IMPOSIBLE,
+        ),
     )
 }
