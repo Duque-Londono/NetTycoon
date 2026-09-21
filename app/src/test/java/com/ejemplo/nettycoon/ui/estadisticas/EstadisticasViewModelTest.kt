@@ -3,6 +3,7 @@ package com.ejemplo.nettycoon.ui.estadisticas
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher

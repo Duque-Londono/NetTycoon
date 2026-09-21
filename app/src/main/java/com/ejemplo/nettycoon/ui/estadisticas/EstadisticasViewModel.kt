@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
