@@ -10,6 +10,7 @@ import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ConsecuenciasPartida
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.firewall.MotorFirewall
 import com.ejemplo.nettycoon.domain.firewall.aReglasEvaluables
 import com.ejemplo.nettycoon.domain.model.Ataque
@@ -67,14 +68,17 @@ class AtaqueEnVivoViewModel(
 
     /**
      * Contador EN MEMORIA (de sesión, no se persiste) de cuántas veces el jugador ha ACERTADO la
-     * misma decisión sobre el mismo puerto. Solo se cuentan aciertos: no queremos sugerir
-     * automatizar un error. Se pierde al salir de la pantalla (el ViewModel se destruye) y se
-     * reinicia al cambiar de nivel.
+     * misma decisión sobre la misma FAMILIA de puertos (no el puerto exacto): la clave es
+     * `(familia, acción)`. Contar por familia hace que la sugerencia aparezca de forma natural con
+     * la progresión (p. ej. acertar DENY en MySQL, PostgreSQL y MongoDB cuenta como 3 en la familia
+     * "Bases de datos"), en vez de exigir 3 aciertos sobre el MISMO puerto. Solo se cuentan aciertos:
+     * no queremos sugerir automatizar un error. Se pierde al salir de la pantalla (el ViewModel se
+     * destruye) y se reinicia al cambiar de nivel.
      */
-    private val aciertosPorPatron = mutableMapOf<Pair<Int, AccionFirewall>, Int>()
+    private val aciertosPorPatron = mutableMapOf<Pair<String, AccionFirewall>, Int>()
 
-    /** Patrones para los que ya se mostró la sugerencia, para no repetirla en la sesión. */
-    private val patronesYaSugeridos = mutableSetOf<Pair<Int, AccionFirewall>>()
+    /** Patrones `(familia, acción)` para los que ya se mostró la sugerencia, para no repetirla. */
+    private val patronesYaSugeridos = mutableSetOf<Pair<String, AccionFirewall>>()
 
     private val _estado = MutableStateFlow(AtaqueEnVivoUiState())
     val estado: StateFlow<AtaqueEnVivoUiState> = _estado.asStateFlow()
@@ -248,9 +252,9 @@ class AtaqueEnVivoViewModel(
 
     /**
      * Lógica del "puente" hacia las reglas: cuenta EN MEMORIA los aciertos repetidos del mismo
-     * patrón (puerto + acción) y, al alcanzar [UMBRAL_SUGERENCIA] por primera vez, devuelve una
-     * [SugerenciaRegla] explicativa. Devuelve `null` si la decisión fue un error (no se cuenta) o
-     * si el patrón aún no llega al umbral o ya se sugirió antes en esta sesión.
+     * patrón (FAMILIA + acción, no puerto exacto) y, al alcanzar [UMBRAL_SUGERENCIA] por primera
+     * vez, devuelve una [SugerenciaRegla] explicativa. Devuelve `null` si la decisión fue un error
+     * (no se cuenta) o si el patrón aún no llega al umbral o ya se sugirió antes en esta sesión.
      */
     private fun calcularSugerencia(
         escenario: EscenarioAtaque,
@@ -259,7 +263,8 @@ class AtaqueEnVivoViewModel(
     ): SugerenciaRegla? {
         if (!acierto) return null
 
-        val patron = escenario.puerto to accion
+        val familia = MapeoFamilias.familiaDe(escenario.puerto)
+        val patron = familia to accion
         val conteo = (aciertosPorPatron[patron] ?: 0) + 1
         aciertosPorPatron[patron] = conteo
 
@@ -402,7 +407,7 @@ class AtaqueEnVivoViewModel(
         "No se pudo $accion: ${e.message ?: "error desconocido"}."
 
     private companion object {
-        /** Aciertos repetidos del mismo patrón (puerto + acción) que disparan la sugerencia. */
+        /** Aciertos repetidos del mismo patrón (familia + acción) que disparan la sugerencia. */
         const val UMBRAL_SUGERENCIA = 3
 
         fun categoriaDe(esMalicioso: Boolean, bloquear: Boolean): CategoriaResultado = when {
