@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
+import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
@@ -272,20 +273,79 @@ class AtaqueEnVivoViewModel(
         patronesYaSugeridos.add(patron)
 
         val bloquear = accion == AccionFirewall.DENY
-        val verbo = if (bloquear) "bloqueado" else "permitido"
         val accionTexto = if (bloquear) "Bloquear" else "Permitir"
-        val texto = "Has $verbo el puerto ${escenario.puerto} (${escenario.servicioNombre}) " +
-            "$conteo veces y siempre acertaste. Cuando reconoces un patrón, puedes crear una " +
-            "REGLA para que el firewall lo haga solo, sin que tengas que decidirlo cada vez. " +
-            "Ve a 'Mis reglas' y crea una regla: puerto ${escenario.puerto}, acción $accionTexto."
+        // COPY BORRADOR (validación del equipo): cuerpo de la tarjeta. No es prosa educativa extensa.
+        val texto = "Acertaste $conteo veces en la familia \"$familia\" con la acción " +
+            "\"$accionTexto\". Puedes crear reglas para que el firewall lo haga solo."
 
         return SugerenciaRegla(
             puerto = escenario.puerto,
             servicio = escenario.servicioNombre,
+            familia = familia,
+            puertosFamilia = MapeoFamilias.puertosDe(familia),
+            accion = accion,
             accionTexto = accionTexto,
             texto = texto,
         )
     }
+
+    /**
+     * Opción (1) del puente — **precisa y segura**: crea UNA regla para el puerto exacto que el
+     * jugador venía decidiendo, con la acción del patrón e IP comodín (`null` = cualquier IP).
+     * Tras crearla, quita la tarjeta y publica un aviso. No hace nada si no hay sugerencia activa.
+     */
+    fun automatizarPuerto() {
+        val sugerencia = _estado.value.ultimoResultado?.sugerencia ?: return
+        crearReglasEnLote(listOf(sugerencia.puerto), sugerencia.accion)
+    }
+
+    /**
+     * Opción (2) del puente — **cómoda pero TOSCA**: crea en lote una regla por cada puerto de la
+     * familia (IP comodín, misma acción). Aplicará la acción también a tráfico futuro por esos
+     * puertos, incluidas amenazas disfrazadas en la familia (la UI lo advierte). Filtra los puertos
+     * que ya tienen una regla activa del jugador para no duplicar. No hace nada sin sugerencia.
+     */
+    fun automatizarFamilia() {
+        val sugerencia = _estado.value.ultimoResultado?.sugerencia ?: return
+        crearReglasEnLote(sugerencia.puertosFamilia, sugerencia.accion)
+    }
+
+    /**
+     * Crea reglas activas (IP comodín) para [puertos] con [accion], filtrando los puertos que ya
+     * tienen una regla ACTIVA del jugador (para no chocar/duplicar). Persiste vía [reglaRepo],
+     * quita la tarjeta de sugerencia y publica un [AtaqueEnVivoUiState.avisoReglas]. El filtrado y la
+     * escritura viven aquí (ViewModel → Repository), nunca en la UI.
+     */
+    private fun crearReglasEnLote(puertos: List<Int>, accion: AccionFirewall) {
+        // Quitamos la tarjeta de inmediato (feedback: la acción se aceptó) y persistimos en segundo
+        // plano; el aviso final llega al terminar la escritura.
+        _estado.update {
+            it.copy(ultimoResultado = it.ultimoResultado?.copy(sugerencia = null))
+        }
+        viewModelScope.launch {
+            try {
+                val yaCubiertos = reglaRepo.obtenerReglasActivas(uid).map { it.puerto }.toSet()
+                val nuevos = puertos.filter { it !in yaCubiertos }
+                nuevos.forEach { puerto ->
+                    reglaRepo.guardarRegla(
+                        ReglaFirewall(owner = uid, puerto = puerto, ip = null, accion = accion),
+                    )
+                }
+                val accionTexto = if (accion == AccionFirewall.DENY) "Bloquear" else "Permitir"
+                val aviso = when {
+                    nuevos.isEmpty() -> "Ya tenías reglas activas para esos puertos; no se creó ninguna."
+                    nuevos.size == 1 -> "Regla creada: $accionTexto en el puerto ${nuevos.first()}."
+                    else -> "Se crearon ${nuevos.size} reglas ($accionTexto) para esos puertos."
+                }
+                _estado.update { it.copy(avisoReglas = aviso) }
+            } catch (e: Exception) {
+                _estado.update { it.copy(error = mensajeDeError("crear las reglas", e)) }
+            }
+        }
+    }
+
+    /** Descarta el aviso de reglas (tras mostrarlo al usuario). */
+    fun limpiarAvisoReglas() = _estado.update { it.copy(avisoReglas = null) }
 
     /**
      * Avanza al siguiente escenario del nivel y limpia el veredicto. Si el selector devuelve un
