@@ -7,6 +7,7 @@ import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeReglaFirewallDao
@@ -14,6 +15,7 @@ import com.ejemplo.nettycoon.domain.model.CategoriaResultado
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -55,6 +57,9 @@ class AtaqueEnVivoViewModelTest {
         textoSituacion = "s", textoPista = "p",
         leccionAcierto = "lección acierto legítimo", leccionError = "lección error legítimo",
     )
+
+    /** Copia del escenario malicioso base cambiando solo el puerto (misma verdad: DENY = acierto). */
+    private fun maliciosoEnPuerto(puerto: Int) = malicioso.copy(puerto = puerto)
 
     @Before
     fun configurarDispatcher() {
@@ -307,9 +312,10 @@ class AtaqueEnVivoViewModelTest {
     }
 
     @Test
-    fun `cada puerto lleva su propio conteo`() = runTest(dispatcher) {
+    fun `familias distintas llevan conteos separados`() = runTest(dispatcher) {
         val (partidaDao, eventoDao) = contexto()
-        // Alterna puerto 22 (bloquear) y puerto 443 (permitir); ambos aciertos, patrones distintos.
+        // Alterna puerto 22 (Acceso remoto, bloquear) y 443 (Web, permitir): familias y acciones
+        // distintas, ambos aciertos.
         val vm = crearViewModel(
             partidaDao, eventoDao,
             escenarios = listOf(malicioso, legitimo),
@@ -317,7 +323,7 @@ class AtaqueEnVivoViewModelTest {
         )
         advanceUntilIdle()
 
-        // Secuencia: 22, 443, 22, 443, 22. El puerto 22 llega a 3; el 443 se queda en 2.
+        // Secuencia: 22, 443, 22, 443, 22. "Acceso remoto" llega a 3; "Web" se queda en 2.
         val sugerencias = mutableListOf<SugerenciaRegla?>()
         repeat(5) {
             if (vm.estado.value.escenario == malicioso) vm.onBloquear() else vm.onPermitir()
@@ -326,14 +332,50 @@ class AtaqueEnVivoViewModelTest {
             vm.onSiguienteAtaque()
         }
 
-        // Solo la 5ª ronda (tercer acierto del puerto 22) dispara sugerencia.
+        // Solo la 5ª ronda (tercer acierto de "Acceso remoto") dispara; "Web" nunca llega al umbral.
         assertNull(sugerencias[0])
         assertNull(sugerencias[1])
         assertNull(sugerencias[2])
         assertNull(sugerencias[3])
         assertNotNull(sugerencias[4])
         assertEquals(22, sugerencias[4]!!.puerto)
+        assertEquals(MapeoFamilias.ACCESO_REMOTO, sugerencias[4]!!.familia)
     }
+
+    @Test
+    fun `tres aciertos de la misma familia con puertos distintos disparan la sugerencia`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Bases de datos con puertos DISTINTOS: MySQL 3306, PostgreSQL 5432, MongoDB 27017.
+            // Con el conteo por puerto exacto de antes NO habría disparado; por familia, sí.
+            val escenarios = listOf(
+                maliciosoEnPuerto(3306), maliciosoEnPuerto(5432), maliciosoEnPuerto(27017),
+            )
+            val vm = crearViewModel(
+                partidaDao, eventoDao, escenarios,
+                seleccionar = { actual, _ -> (actual ?: -1) + 1 },
+            )
+            advanceUntilIdle()
+
+            // Rondas 1 (3306) y 2 (5432): aún por debajo del umbral de la familia.
+            vm.onBloquear()
+            advanceUntilIdle()
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+            vm.onSiguienteAtaque()
+            vm.onBloquear()
+            advanceUntilIdle()
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+
+            // Ronda 3 (27017): tercer acierto de "Bases de datos" → dispara.
+            vm.onSiguienteAtaque()
+            vm.onBloquear()
+            advanceUntilIdle()
+            val sugerencia = vm.estado.value.ultimoResultado!!.sugerencia
+            assertNotNull(sugerencia)
+            assertEquals(MapeoFamilias.BASES_DE_DATOS, sugerencia!!.familia)
+            assertEquals(27017, sugerencia.puerto) // el puerto exacto que venía decidiendo
+            assertEquals(AccionFirewall.DENY, sugerencia.accion)
+        }
 
     // --- Fase 3: niveles de dificultad + progresión ---
 
@@ -580,5 +622,83 @@ class AtaqueEnVivoViewModelTest {
         assertEquals("Permitir", resultado.automatizadaPor!!.accionTexto)
         // No incrementa contadores manuales.
         assertEquals(0, vm.estado.value.rondas)
+    }
+
+    // --- Fase 5: puente accionable (crear reglas desde la sugerencia) ---
+
+    /** Lleva el puente al umbral repitiendo aciertos DENY sobre escenarios de una misma familia. */
+    private fun TestScope.llegarAlUmbral(vm: AtaqueEnVivoViewModel) {
+        repeat(UMBRAL) {
+            vm.onBloquear()
+            advanceUntilIdle()
+            if (it < UMBRAL - 1) vm.onSiguienteAtaque()
+        }
+    }
+
+    @Test
+    fun `automatizarPuerto crea una sola regla para el puerto exacto con IP comodin`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            val reglaDao = FakeReglaFirewallDao()
+            // Mismo puerto 22 repetido: alcanza el umbral de "Acceso remoto".
+            val vm = crearViewModel(
+                partidaDao, eventoDao, listOf(malicioso),
+                seleccionar = { _, _ -> 0 }, reglaDao = reglaDao,
+            )
+            advanceUntilIdle()
+            llegarAlUmbral(vm)
+            assertNotNull(vm.estado.value.ultimoResultado!!.sugerencia)
+
+            vm.automatizarPuerto()
+            advanceUntilIdle()
+
+            val reglas = reglaDao.obtenerActivasPorOwner(uid)
+            assertEquals(1, reglas.size)
+            assertEquals(22, reglas.first().puerto)
+            assertEquals(AccionFirewall.DENY, reglas.first().accion)
+            assertNull(reglas.first().ip)
+            assertTrue(reglas.first().activa)
+            // La tarjeta se retira y se publica un aviso.
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+            assertNotNull(vm.estado.value.avisoReglas)
+        }
+
+    @Test
+    fun `automatizarFamilia crea las reglas que faltan y no duplica las ya cubiertas`() =
+        runTest(dispatcher) {
+            val (partidaDao, eventoDao) = contexto()
+            // Regla activa preexistente en el 22 (Acceso remoto), en un puerto que NO usan los
+            // escenarios: así no auto-resuelve ninguna ronda y podemos probar el filtrado.
+            val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(22, AccionFirewall.DENY)))
+            val escenarios = listOf(
+                maliciosoEnPuerto(23), maliciosoEnPuerto(3389), maliciosoEnPuerto(5900),
+            )
+            val vm = crearViewModel(
+                partidaDao, eventoDao, escenarios,
+                seleccionar = { actual, _ -> (actual ?: -1) + 1 }, reglaDao = reglaDao,
+            )
+            advanceUntilIdle()
+            llegarAlUmbral(vm)
+            val sugerencia = vm.estado.value.ultimoResultado!!.sugerencia
+            assertNotNull(sugerencia)
+            assertEquals(MapeoFamilias.ACCESO_REMOTO, sugerencia!!.familia)
+
+            vm.automatizarFamilia()
+            advanceUntilIdle()
+
+            val reglas = reglaDao.obtenerActivasPorOwner(uid)
+            // 1 preexistente (22) + 3 nuevas (23, 3389, 5900) = 4, sin duplicar el 22.
+            assertEquals(4, reglas.size)
+            assertEquals(setOf(22, 23, 3389, 5900), reglas.map { it.puerto }.toSet())
+            assertEquals(1, reglas.count { it.puerto == 22 })
+            assertTrue(reglas.all { it.accion == AccionFirewall.DENY })
+            assertTrue(reglas.all { it.ip == null })
+            assertNull(vm.estado.value.ultimoResultado!!.sugerencia)
+            assertNotNull(vm.estado.value.avisoReglas)
+        }
+
+    private companion object {
+        /** Copia local del umbral del puente para no acoplar el test al valor exacto. */
+        const val UMBRAL = 3
     }
 }
