@@ -5,11 +5,13 @@ import androidx.lifecycle.viewModelScope
 import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
+import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ConsecuenciasPartida
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.firewall.MotorFirewall
 import com.ejemplo.nettycoon.domain.firewall.aReglasEvaluables
 import com.ejemplo.nettycoon.domain.model.Ataque
@@ -67,14 +69,17 @@ class AtaqueEnVivoViewModel(
 
     /**
      * Contador EN MEMORIA (de sesión, no se persiste) de cuántas veces el jugador ha ACERTADO la
-     * misma decisión sobre el mismo puerto. Solo se cuentan aciertos: no queremos sugerir
-     * automatizar un error. Se pierde al salir de la pantalla (el ViewModel se destruye) y se
-     * reinicia al cambiar de nivel.
+     * misma decisión sobre la misma FAMILIA de puertos (no el puerto exacto): la clave es
+     * `(familia, acción)`. Contar por familia hace que la sugerencia aparezca de forma natural con
+     * la progresión (p. ej. acertar DENY en MySQL, PostgreSQL y MongoDB cuenta como 3 en la familia
+     * "Bases de datos"), en vez de exigir 3 aciertos sobre el MISMO puerto. Solo se cuentan aciertos:
+     * no queremos sugerir automatizar un error. Se pierde al salir de la pantalla (el ViewModel se
+     * destruye) y se reinicia al cambiar de nivel.
      */
-    private val aciertosPorPatron = mutableMapOf<Pair<Int, AccionFirewall>, Int>()
+    private val aciertosPorPatron = mutableMapOf<Pair<String, AccionFirewall>, Int>()
 
-    /** Patrones para los que ya se mostró la sugerencia, para no repetirla en la sesión. */
-    private val patronesYaSugeridos = mutableSetOf<Pair<Int, AccionFirewall>>()
+    /** Patrones `(familia, acción)` para los que ya se mostró la sugerencia, para no repetirla. */
+    private val patronesYaSugeridos = mutableSetOf<Pair<String, AccionFirewall>>()
 
     private val _estado = MutableStateFlow(AtaqueEnVivoUiState())
     val estado: StateFlow<AtaqueEnVivoUiState> = _estado.asStateFlow()
@@ -248,9 +253,9 @@ class AtaqueEnVivoViewModel(
 
     /**
      * Lógica del "puente" hacia las reglas: cuenta EN MEMORIA los aciertos repetidos del mismo
-     * patrón (puerto + acción) y, al alcanzar [UMBRAL_SUGERENCIA] por primera vez, devuelve una
-     * [SugerenciaRegla] explicativa. Devuelve `null` si la decisión fue un error (no se cuenta) o
-     * si el patrón aún no llega al umbral o ya se sugirió antes en esta sesión.
+     * patrón (FAMILIA + acción, no puerto exacto) y, al alcanzar [UMBRAL_SUGERENCIA] por primera
+     * vez, devuelve una [SugerenciaRegla] explicativa. Devuelve `null` si la decisión fue un error
+     * (no se cuenta) o si el patrón aún no llega al umbral o ya se sugirió antes en esta sesión.
      */
     private fun calcularSugerencia(
         escenario: EscenarioAtaque,
@@ -259,7 +264,8 @@ class AtaqueEnVivoViewModel(
     ): SugerenciaRegla? {
         if (!acierto) return null
 
-        val patron = escenario.puerto to accion
+        val familia = MapeoFamilias.familiaDe(escenario.puerto)
+        val patron = familia to accion
         val conteo = (aciertosPorPatron[patron] ?: 0) + 1
         aciertosPorPatron[patron] = conteo
 
@@ -267,20 +273,79 @@ class AtaqueEnVivoViewModel(
         patronesYaSugeridos.add(patron)
 
         val bloquear = accion == AccionFirewall.DENY
-        val verbo = if (bloquear) "bloqueado" else "permitido"
         val accionTexto = if (bloquear) "Bloquear" else "Permitir"
-        val texto = "Has $verbo el puerto ${escenario.puerto} (${escenario.servicioNombre}) " +
-            "$conteo veces y siempre acertaste. Cuando reconoces un patrón, puedes crear una " +
-            "REGLA para que el firewall lo haga solo, sin que tengas que decidirlo cada vez. " +
-            "Ve a 'Mis reglas' y crea una regla: puerto ${escenario.puerto}, acción $accionTexto."
+        // COPY BORRADOR (validación del equipo): cuerpo de la tarjeta. No es prosa educativa extensa.
+        val texto = "Acertaste $conteo veces en la familia \"$familia\" con la acción " +
+            "\"$accionTexto\". Puedes crear reglas para que el firewall lo haga solo."
 
         return SugerenciaRegla(
             puerto = escenario.puerto,
             servicio = escenario.servicioNombre,
+            familia = familia,
+            puertosFamilia = MapeoFamilias.puertosDe(familia),
+            accion = accion,
             accionTexto = accionTexto,
             texto = texto,
         )
     }
+
+    /**
+     * Opción (1) del puente — **precisa y segura**: crea UNA regla para el puerto exacto que el
+     * jugador venía decidiendo, con la acción del patrón e IP comodín (`null` = cualquier IP).
+     * Tras crearla, quita la tarjeta y publica un aviso. No hace nada si no hay sugerencia activa.
+     */
+    fun automatizarPuerto() {
+        val sugerencia = _estado.value.ultimoResultado?.sugerencia ?: return
+        crearReglasEnLote(listOf(sugerencia.puerto), sugerencia.accion)
+    }
+
+    /**
+     * Opción (2) del puente — **cómoda pero TOSCA**: crea en lote una regla por cada puerto de la
+     * familia (IP comodín, misma acción). Aplicará la acción también a tráfico futuro por esos
+     * puertos, incluidas amenazas disfrazadas en la familia (la UI lo advierte). Filtra los puertos
+     * que ya tienen una regla activa del jugador para no duplicar. No hace nada sin sugerencia.
+     */
+    fun automatizarFamilia() {
+        val sugerencia = _estado.value.ultimoResultado?.sugerencia ?: return
+        crearReglasEnLote(sugerencia.puertosFamilia, sugerencia.accion)
+    }
+
+    /**
+     * Crea reglas activas (IP comodín) para [puertos] con [accion], filtrando los puertos que ya
+     * tienen una regla ACTIVA del jugador (para no chocar/duplicar). Persiste vía [reglaRepo],
+     * quita la tarjeta de sugerencia y publica un [AtaqueEnVivoUiState.avisoReglas]. El filtrado y la
+     * escritura viven aquí (ViewModel → Repository), nunca en la UI.
+     */
+    private fun crearReglasEnLote(puertos: List<Int>, accion: AccionFirewall) {
+        // Quitamos la tarjeta de inmediato (feedback: la acción se aceptó) y persistimos en segundo
+        // plano; el aviso final llega al terminar la escritura.
+        _estado.update {
+            it.copy(ultimoResultado = it.ultimoResultado?.copy(sugerencia = null))
+        }
+        viewModelScope.launch {
+            try {
+                val yaCubiertos = reglaRepo.obtenerReglasActivas(uid).map { it.puerto }.toSet()
+                val nuevos = puertos.filter { it !in yaCubiertos }
+                nuevos.forEach { puerto ->
+                    reglaRepo.guardarRegla(
+                        ReglaFirewall(owner = uid, puerto = puerto, ip = null, accion = accion),
+                    )
+                }
+                val accionTexto = if (accion == AccionFirewall.DENY) "Bloquear" else "Permitir"
+                val aviso = when {
+                    nuevos.isEmpty() -> "Ya tenías reglas activas para esos puertos; no se creó ninguna."
+                    nuevos.size == 1 -> "Regla creada: $accionTexto en el puerto ${nuevos.first()}."
+                    else -> "Se crearon ${nuevos.size} reglas ($accionTexto) para esos puertos."
+                }
+                _estado.update { it.copy(avisoReglas = aviso) }
+            } catch (e: Exception) {
+                _estado.update { it.copy(error = mensajeDeError("crear las reglas", e)) }
+            }
+        }
+    }
+
+    /** Descarta el aviso de reglas (tras mostrarlo al usuario). */
+    fun limpiarAvisoReglas() = _estado.update { it.copy(avisoReglas = null) }
 
     /**
      * Avanza al siguiente escenario del nivel y limpia el veredicto. Si el selector devuelve un
@@ -402,7 +467,7 @@ class AtaqueEnVivoViewModel(
         "No se pudo $accion: ${e.message ?: "error desconocido"}."
 
     private companion object {
-        /** Aciertos repetidos del mismo patrón (puerto + acción) que disparan la sugerencia. */
+        /** Aciertos repetidos del mismo patrón (familia + acción) que disparan la sugerencia. */
         const val UMBRAL_SUGERENCIA = 3
 
         fun categoriaDe(esMalicioso: Boolean, bloquear: Boolean): CategoriaResultado = when {

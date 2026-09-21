@@ -1,5 +1,6 @@
 package com.ejemplo.nettycoon.ui.ataque
 
+import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
@@ -38,6 +39,12 @@ data class AtaqueEnVivoUiState(
     val cargando: Boolean = true,
     val evaluandoRegla: Boolean = false,
     val error: String? = null,
+    /**
+     * Aviso breve tras aceptar una sugerencia del puente (cuántas reglas se crearon, o que ya
+     * estaban cubiertas), o `null`. Es transitorio: la UI lo muestra y luego llama a
+     * `limpiarAvisoReglas()`. No es un error; va en su propio canal para no pisar [error].
+     */
+    val avisoReglas: String? = null,
 ) {
     /** `true` si el jugador ya decidió sobre el escenario actual (hay veredicto que mostrar). */
     val decisionTomada: Boolean get() = ultimoResultado != null
@@ -95,15 +102,29 @@ data class AutomatizacionRegla(
 )
 
 /**
- * Sugerencia (puramente EXPLICATIVA) de crear una regla de firewall para automatizar un patrón
- * que el jugador ya domina a mano. No crea ni prellena nada: solo enseña y ofrece ir al CRUD de
- * reglas.
+ * Sugerencia ACCIONABLE de automatizar con reglas de firewall un patrón (familia + acción) que el
+ * jugador ya domina a mano. Ofrece dos caminos (ver `AtaqueEnVivoViewModel.automatizarPuerto` y
+ * `automatizarFamilia`):
+ *
+ * 1. **Solo el puerto** [puerto]: crea una regla precisa y segura, la más conservadora.
+ * 2. **La familia entera** [familia]: crea en lote una regla por cada puerto de [puertosFamilia];
+ *    es cómoda pero TOSCA, porque aplicará [accion] también a tráfico futuro por esos puertos,
+ *    incluidas amenazas disfrazadas dentro de la familia (de ahí la advertencia en la UI).
+ *
+ * Lleva la [accion] cruda ([AccionFirewall]) para poder crear las reglas, además del texto para
+ * mostrarla al jugador.
  */
 data class SugerenciaRegla(
     val puerto: Int,
     val servicio: String,
+    /** Familia de decisión del patrón (de `MapeoFamilias`), p. ej. "Bases de datos". */
+    val familia: String,
+    /** Puertos que componen la familia (de `MapeoFamilias.puertosDe`), para el lote de la opción 2. */
+    val puertosFamilia: List<Int>,
+    /** Acción a automatizar (cruda), la misma que el jugador venía decidiendo con acierto. */
+    val accion: AccionFirewall,
     /** Acción a automatizar, en texto para el jugador: "Bloquear" o "Permitir". */
     val accionTexto: String,
-    /** Mensaje pedagógico completo, ya adaptado al puerto/servicio/decisión reales. */
+    /** Mensaje pedagógico completo, ya adaptado a la familia/puerto/decisión reales. */
     val texto: String,
 )

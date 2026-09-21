@@ -1,4 +1,4 @@
-package com.ejemplo.nettycoon.ui.estadisticas
+package com.ejemplo.nettycoon.domain.firewall
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -7,8 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pruebas del mapeo puerto → familia (capa de presentación). No necesita corrutinas ni Room:
- * es una tabla pura. Fija los puertos estándar de cada familia y el fallback a "Otros".
+ * Pruebas del mapeo puerto → familia (dominio, Kotlin puro). No necesita corrutinas ni Room:
+ * es una tabla pura. Fija los puertos estándar de cada familia, el fallback a "Otros" y el
+ * lookup inverso [MapeoFamilias.puertosDe].
  */
 class MapeoFamiliasTest {
 
@@ -105,5 +106,35 @@ class MapeoFamiliasTest {
             assertTrue(MapeoFamilias.descripcionDe(familia)!!.isNotBlank())
         }
         assertNull(MapeoFamilias.descripcionDe(MapeoFamilias.OTROS))
+    }
+
+    @Test
+    fun `puertosDe devuelve los puertos de la familia en orden ascendente`() {
+        assertEquals(listOf(22, 23, 3389, 5900), MapeoFamilias.puertosDe(MapeoFamilias.ACCESO_REMOTO))
+        assertEquals(listOf(80, 443, 8080, 8443), MapeoFamilias.puertosDe(MapeoFamilias.WEB))
+        assertEquals(listOf(5060, 5061), MapeoFamilias.puertosDe(MapeoFamilias.TELEFONIA))
+    }
+
+    @Test
+    fun `puertosDe de una familia inexistente o de Otros es vacio`() {
+        assertTrue(MapeoFamilias.puertosDe("Familia que no existe").isEmpty())
+        assertTrue(MapeoFamilias.puertosDe(MapeoFamilias.OTROS).isEmpty())
+    }
+
+    @Test
+    fun `puertosDe y familiaDe son consistentes ida y vuelta`() {
+        val familias = listOf(
+            MapeoFamilias.ACCESO_REMOTO, MapeoFamilias.WEB, MapeoFamilias.BASES_DE_DATOS,
+            MapeoFamilias.CORREO, MapeoFamilias.ARCHIVOS, MapeoFamilias.DNS_RED,
+            MapeoFamilias.DIRECTORIO_AUTENTICACION, MapeoFamilias.GESTION_MONITOREO,
+            MapeoFamilias.TELEFONIA, MapeoFamilias.SOSPECHOSOS,
+        )
+        familias.forEach { familia ->
+            val puertos = MapeoFamilias.puertosDe(familia)
+            assertTrue("La familia $familia debería tener puertos", puertos.isNotEmpty())
+            puertos.forEach { puerto ->
+                assertEquals(familia, MapeoFamilias.familiaDe(puerto))
+            }
+        }
     }
 }

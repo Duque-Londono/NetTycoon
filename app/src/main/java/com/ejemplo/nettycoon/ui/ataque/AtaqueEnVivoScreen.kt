@@ -32,7 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 
@@ -60,6 +62,9 @@ fun AtaqueEnVivoScreen(
         onBloquear = viewModel::onBloquear,
         onSiguienteAtaque = viewModel::onSiguienteAtaque,
         onLimpiarError = viewModel::limpiarError,
+        onAutomatizarPuerto = viewModel::automatizarPuerto,
+        onAutomatizarFamilia = viewModel::automatizarFamilia,
+        onLimpiarAvisoReglas = viewModel::limpiarAvisoReglas,
         onIrAReglas = onIrAReglas,
         onVolver = onVolver,
         modifier = modifier,
@@ -78,6 +83,9 @@ fun AtaqueEnVivoScreen(
     onBloquear: () -> Unit,
     onSiguienteAtaque: () -> Unit,
     onLimpiarError: () -> Unit,
+    onAutomatizarPuerto: () -> Unit,
+    onAutomatizarFamilia: () -> Unit,
+    onLimpiarAvisoReglas: () -> Unit,
     onIrAReglas: () -> Unit,
     onVolver: () -> Unit,
     modifier: Modifier = Modifier,
@@ -139,6 +147,10 @@ fun AtaqueEnVivoScreen(
                         TarjetaError(mensaje = mensaje, onLimpiarError = onLimpiarError)
                     }
 
+                    estado.avisoReglas?.let { aviso ->
+                        TarjetaAvisoReglas(mensaje = aviso, onLimpiar = onLimpiarAvisoReglas)
+                    }
+
                     val resultado = estado.ultimoResultado
                     when {
                         // Comprobando si una regla del jugador resuelve el escenario (antes de decidir).
@@ -167,7 +179,12 @@ fun AtaqueEnVivoScreen(
                                 explicacion = escenario.explicacionAmpliada,
                             )
                             resultado.sugerencia?.let { sugerencia ->
-                                TarjetaSugerencia(sugerencia = sugerencia, onIrAReglas = onIrAReglas)
+                                TarjetaSugerencia(
+                                    sugerencia = sugerencia,
+                                    onAutomatizarPuerto = onAutomatizarPuerto,
+                                    onAutomatizarFamilia = onAutomatizarFamilia,
+                                    onIrAReglas = onIrAReglas,
+                                )
                             }
                             BotonSiguiente(onSiguienteAtaque = onSiguienteAtaque)
                         }
@@ -593,13 +610,22 @@ private fun TarjetaAutomatizada(
 }
 
 /**
- * Tarjeta de "consejo": el puente hacia las reglas. Tono distinto del veredicto (que celebra o
- * corrige) y de la pista (que informa antes de decidir): usa el color terciario para sentirse como
- * un aprendizaje/mejora, no como un error. Solo enseña y ofrece ir al CRUD; no crea nada.
+ * Tarjeta del puente hacia las reglas. Tono distinto del veredicto (que celebra o corrige) y de la
+ * pista (que informa antes de decidir): usa el color terciario para sentirse como un
+ * aprendizaje/mejora, no como un error.
+ *
+ * Ofrece dos caminos ACCIONABLES ("Precisión vs. comodidad"):
+ * - **Solo el puerto**: crea una regla precisa y segura para el puerto exacto.
+ * - **Toda la familia**: crea en lote las reglas de la familia; cómodo pero tosco, con advertencia
+ *   explícita de que se aplicará también a tráfico futuro (incluidas amenazas disfrazadas).
+ *
+ * Los COPYS son BORRADOR para validación del equipo (no prosa educativa extensa).
  */
 @Composable
 private fun TarjetaSugerencia(
     sugerencia: SugerenciaRegla,
+    onAutomatizarPuerto: () -> Unit,
+    onAutomatizarFamilia: () -> Unit,
     onIrAReglas: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -612,19 +638,48 @@ private fun TarjetaSugerencia(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // COPY BORRADOR (validación del equipo): título de la tarjeta.
             Text(
-                "🎓 Consejo: automatiza esto",
+                "🎓 Ya dominas esta familia: ¿la automatizas?",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text(sugerencia.texto, style = MaterialTheme.typography.bodyLarge)
+
+            // Opción (1): precisa y segura → solo el puerto exacto.
             Button(
-                onClick = onIrAReglas,
-                modifier = Modifier.align(Alignment.End),
+                onClick = onAutomatizarPuerto,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Ir a Mis reglas")
+                // COPY BORRADOR: botón opción "solo el puerto".
+                Text("Automatizar solo el puerto ${sugerencia.puerto} (${sugerencia.servicio})")
+            }
+
+            // Opción (2): cómoda pero tosca → familia entera, con advertencia explícita.
+            val listaPuertos = sugerencia.puertosFamilia.joinToString(", ")
+            Text(
+                // COPY BORRADOR: advertencia de la opción "familia entera".
+                "⚠️ Cómodo pero tosco: aplicará \"${sugerencia.accionTexto}\" a TODO el tráfico " +
+                    "futuro de estos puertos ($listaPuertos), incluidas amenazas disfrazadas dentro " +
+                    "de la familia. Una regla amplia también puede dejar pasar lo malo.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = onAutomatizarFamilia,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onSecondary,
+                ),
+            ) {
+                // COPY BORRADOR: botón opción "familia entera".
+                Text("Automatizar toda la familia ${sugerencia.familia}")
+            }
+
+            TextButton(onClick = onIrAReglas, modifier = Modifier.align(Alignment.End)) {
+                Text("Ver mis reglas")
             }
         }
     }
@@ -649,6 +704,35 @@ private fun TarjetaError(
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onLimpiarError, modifier = Modifier.align(Alignment.End)) {
+                Text("Entendido")
+            }
+        }
+    }
+}
+
+/**
+ * Aviso breve tras aceptar una sugerencia del puente (cuántas reglas se crearon, o que ya estaban
+ * cubiertas). No es un error: usa el color primario, no el de error.
+ */
+@Composable
+private fun TarjetaAvisoReglas(
+    mensaje: String,
+    onLimpiar: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(mensaje, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = onLimpiar, modifier = Modifier.align(Alignment.End)) {
                 Text("Entendido")
             }
         }
@@ -692,7 +776,8 @@ private fun AtaqueEnVivoSinDecidirPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -721,7 +806,8 @@ private fun AtaqueEnVivoAciertoPermitirPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -750,7 +836,8 @@ private fun AtaqueEnVivoFalloPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -778,18 +865,23 @@ private fun AtaqueEnVivoConSugerenciaPreview() {
                     sugerencia = SugerenciaRegla(
                         puerto = escenarioDemoMalicioso.puerto,
                         servicio = escenarioDemoMalicioso.servicioNombre,
+                        familia = MapeoFamilias.familiaDe(escenarioDemoMalicioso.puerto),
+                        puertosFamilia = MapeoFamilias.puertosDe(
+                            MapeoFamilias.familiaDe(escenarioDemoMalicioso.puerto),
+                        ),
+                        accion = AccionFirewall.DENY,
                         accionTexto = "Bloquear",
-                        texto = "Has bloqueado el puerto ${escenarioDemoMalicioso.puerto} " +
-                            "(${escenarioDemoMalicioso.servicioNombre}) 3 veces y siempre " +
-                            "acertaste. Cuando reconoces un patrón, puedes crear una REGLA para " +
-                            "que el firewall lo haga solo. Ve a 'Mis reglas' y crea una regla: " +
-                            "puerto ${escenarioDemoMalicioso.puerto}, acción Bloquear.",
+                        texto = "Acertaste 3 veces en la familia \"" +
+                            MapeoFamilias.familiaDe(escenarioDemoMalicioso.puerto) +
+                            "\" con la acción \"Bloquear\". Puedes crear reglas para que el " +
+                            "firewall lo haga solo.",
                     ),
                 ),
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -823,7 +915,8 @@ private fun AtaqueEnVivoAutomatizadoPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -857,7 +950,8 @@ private fun AtaqueEnVivoAutomatizadoBrechaPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -870,7 +964,8 @@ private fun AtaqueEnVivoSelectorPreview() {
             estado = AtaqueEnVivoUiState(cargando = false),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -890,7 +985,8 @@ private fun AtaqueEnVivoNivelCompletadoPreview() {
             ),
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
-            onLimpiarError = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
+            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }

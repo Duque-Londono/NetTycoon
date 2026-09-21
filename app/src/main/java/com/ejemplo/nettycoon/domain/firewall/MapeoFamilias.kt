@@ -1,17 +1,19 @@
-package com.ejemplo.nettycoon.ui.estadisticas
+package com.ejemplo.nettycoon.domain.firewall
 
 /**
- * Mapeo **puerto → familia de decisión**, usado solo por la pantalla de estadísticas para
- * agrupar el historial de ataques en categorías legibles ("dominadas" vs. "flojas").
+ * Mapeo **puerto → familia de decisión**. Clasifica un puerto en una familia legible para dos
+ * consumidores: la pantalla de estadísticas (agrupar el historial en "dominadas" vs. "flojas") y
+ * el "puente" de la pantalla de ataque (detectar patrones por familia y ofrecer automatizarlos).
  *
  * ⚠️ BORRADOR ESTRUCTURAL PARA VALIDACIÓN DEL EQUIPO. Es únicamente la tabla de agrupación:
  * qué puerto cae en qué familia, cómo se llama cada familia y su descripción de una línea. Los
  * puertos son asignaciones IANA/estándar (conocimiento IT); los NOMBRES de familia y las
  * DESCRIPCIONES son provisionales y los revisa el equipo. Aquí no se redacta prosa educativa.
  *
- * Vive en la capa de presentación (`ui/estadisticas/`) A PROPÓSITO: no toca Room, ni el
- * dominio, ni el esquema de `EventoAtaque`. La "familia" NO se persiste; se deriva en lectura
- * a partir de `EventoAtaque.puertoDestino`, que es el único dato con el que se puede clasificar.
+ * Vive en `domain/firewall/` A PROPÓSITO: es Kotlin puro (sin Android, Room ni Compose), así que
+ * tanto `ui/estadisticas/` como `ui/ataque/` pueden depender de él sin acoplarse entre features
+ * de UI. La "familia" NO se persiste ni toca el esquema de `EventoAtaque`/`ReglaFirewall`; se
+ * deriva en lectura a partir del puerto, que es el único dato con el que se puede clasificar.
  *
  * Un puerto sin entrada en la tabla (o un evento con `puertoDestino` nulo) cae en [OTROS].
  */
@@ -121,6 +123,14 @@ object MapeoFamilias {
      */
     fun familiaDe(puerto: Int?): String =
         puerto?.let { PUERTO_A_FAMILIA[it] } ?: OTROS
+
+    /**
+     * Puertos que pertenecen a una [familia], en orden ascendente. Lookup inverso de [familiaDe],
+     * usado por el "puente" para crear en lote las reglas de una familia entera. Una familia sin
+     * puertos mapeados (incluida [OTROS], que es el cajón de sastre) devuelve una lista vacía.
+     */
+    fun puertosDe(familia: String): List<Int> =
+        PUERTO_A_FAMILIA.filterValues { it == familia }.keys.sorted()
 
     /** Descripción de una línea de la familia, o `null` si no tiene (p. ej. [OTROS]). */
     fun descripcionDe(familia: String): String? = DESCRIPCIONES[familia]
