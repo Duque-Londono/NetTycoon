@@ -200,6 +200,7 @@ private fun Dificultad.etiqueta(): String = when (this) {
     Dificultad.FACIL -> "Fácil"
     Dificultad.MEDIO -> "Medio"
     Dificultad.DIFICIL -> "Difícil"
+    Dificultad.IMPOSIBLE -> "Imposible"
 }
 
 /**
@@ -237,6 +238,17 @@ private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifie
                 titulo = "Difícil",
                 descripcion = "Casos con trampa: lo que parece sospechoso puede ser legítimo (y al revés).",
                 onClick = { onElegirNivel(Dificultad.DIFICIL) },
+            )
+            // COPY BORRADOR (validación del equipo): descripción + advertencia del nivel Imposible.
+            OpcionNivel(
+                titulo = "Imposible",
+                descripcion = "Sin ayudas: solo puerto e IP/país/ISP en crudo. Decides a ciegas.",
+                onClick = { onElegirNivel(Dificultad.IMPOSIBLE) },
+            )
+            Text(
+                "⚠️ Examen final: sin servicio, sin pista, sin explicación.",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
             )
         }
     }

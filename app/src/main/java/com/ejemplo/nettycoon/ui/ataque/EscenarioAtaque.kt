@@ -7,11 +7,16 @@ package com.ejemplo.nettycoon.ui.ataque
  * - [FACIL]: casos de libro (HTTPS legítimo → permitir; fuerza bruta → bloquear).
  * - [MEDIO]: requieren algo de criterio (servicios sensibles expuestos, protocolos obsoletos).
  * - [DIFICIL]: ambiguos o con matiz (lo que parece sospechoso puede ser legítimo, y al revés).
+ * - [IMPOSIBLE]: examen final "sin rueditas". La UI apaga TODO el material educativo (servicio,
+ *   situación, pista, lección y "¿Por qué?") y muestra solo el contexto en crudo (puerto + IP +
+ *   país + ISP); el jugador decide a ciegas. El marcador (acierto/consecuencias) y el registro de
+ *   `EventoAtaque` siguen igual que en los demás niveles. El "pelado" es solo de presentación:
+ *   este metadato no toca dominio, Room ni el motor.
  *
  * Se usa para servir el catálogo por niveles con una curva de aprendizaje (ver el selector del
  * ViewModel). Es solo metadato de presentación: no toca dominio, Room ni el motor.
  */
-enum class Dificultad { FACIL, MEDIO, DIFICIL }
+enum class Dificultad { FACIL, MEDIO, DIFICIL, IMPOSIBLE }
 
 /**
  * Escenario pedagógico de "Ataque en vivo".
