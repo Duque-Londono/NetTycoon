@@ -61,6 +61,16 @@ sealed class Rutas(val ruta: String) {
         fun crearRuta(uid: String): String = "ataque-en-vivo/${Uri.encode(uid)}"
     }
 
+    /**
+     * Pantalla "Mi progreso": estadísticas derivadas del historial de ataques del jugador.
+     * Recibe el `uid` como argumento de ruta, con el mismo patrón que [Firewall]/[ConfigRed]/
+     * [AtaqueEnVivo]: el destino es autocontenido y su ViewModel no necesita consultar Firebase.
+     */
+    data object Estadisticas : Rutas("estadisticas/{$ARG_UID}") {
+        /** Construye la ruta concreta para un [uid] dado. */
+        fun crearRuta(uid: String): String = "estadisticas/${Uri.encode(uid)}"
+    }
+
     companion object {
         /** Nombre del argumento de ruta que transporta el uid del jugador. */
         const val ARG_UID = "uid"
