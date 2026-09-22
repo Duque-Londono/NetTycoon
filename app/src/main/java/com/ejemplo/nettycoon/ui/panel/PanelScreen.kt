@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -65,6 +66,7 @@ fun PanelScreen(
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
     onIrAEstadisticas: () -> Unit,
+    onIrATienda: () -> Unit,
     onVerOnboarding: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
@@ -78,6 +80,7 @@ fun PanelScreen(
         onIrAReglas = onIrAReglas,
         onIrAConfigRed = onIrAConfigRed,
         onIrAEstadisticas = onIrAEstadisticas,
+        onIrATienda = onIrATienda,
         onVerOnboarding = onVerOnboarding,
         onCerrarSesion = onCerrarSesion,
         modifier = modifier,
@@ -95,6 +98,7 @@ fun PanelScreen(
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
     onIrAEstadisticas: () -> Unit,
+    onIrATienda: () -> Unit,
     onVerOnboarding: () -> Unit,
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier,
@@ -149,6 +153,9 @@ fun PanelScreen(
             }
             OutlinedButton(onClick = onIrAEstadisticas, modifier = Modifier.fillMaxWidth()) {
                 BotonContenido(Icons.Filled.BarChart, "Mi progreso")
+            }
+            OutlinedButton(onClick = onIrATienda, modifier = Modifier.fillMaxWidth()) {
+                BotonContenido(Icons.Filled.Storefront, "Tienda")
             }
             OutlinedButton(onClick = onVerOnboarding, modifier = Modifier.fillMaxWidth()) {
                 BotonContenido(Icons.AutoMirrored.Filled.HelpOutline, "Cómo se juega")
@@ -329,6 +336,7 @@ private fun PanelScreenPreview() {
             onIrAReglas = {},
             onIrAConfigRed = {},
             onIrAEstadisticas = {},
+            onIrATienda = {},
             onVerOnboarding = {},
             onCerrarSesion = {},
         )
@@ -350,6 +358,7 @@ private fun PanelScreenCargandoPreview() {
             onIrAReglas = {},
             onIrAConfigRed = {},
             onIrAEstadisticas = {},
+            onIrATienda = {},
             onVerOnboarding = {},
             onCerrarSesion = {},
         )

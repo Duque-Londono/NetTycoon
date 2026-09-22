@@ -71,6 +71,16 @@ sealed class Rutas(val ruta: String) {
         fun crearRuta(uid: String): String = "estadisticas/${Uri.encode(uid)}"
     }
 
+    /**
+     * Tienda (E3): donde el jugador gasta el dinero virtual en reparar salud o en un escudo de un
+     * solo uso. Recibe el `uid` como argumento de ruta, con el mismo patrón que las demás: el
+     * destino es autocontenido y su ViewModel no necesita consultar Firebase.
+     */
+    data object Tienda : Rutas("tienda/{$ARG_UID}") {
+        /** Construye la ruta concreta para un [uid] dado. */
+        fun crearRuta(uid: String): String = "tienda/${Uri.encode(uid)}"
+    }
+
     companion object {
         /** Nombre del argumento de ruta que transporta el uid del jugador. */
         const val ARG_UID = "uid"
