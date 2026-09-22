@@ -19,6 +19,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -41,7 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
+import com.ejemplo.nettycoon.ui.theme.TipografiaDatosTecnicos
 
 /**
  * Pantalla de gestión de reglas de firewall: el jugador crea, activa/desactiva y elimina las
@@ -104,8 +107,8 @@ fun FirewallScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
             item { TarjetaIntro() }
 
@@ -155,16 +158,18 @@ fun FirewallScreen(
 /** Explica, en lenguaje simple, qué es esta pantalla y para qué sirven las reglas. */
 @Composable
 private fun TarjetaIntro(modifier: Modifier = Modifier) {
+    // Meta-info en rol NEUTRO (surfaceVariant): con Bloquear = secondary(índigo), un intro en
+    // índigo colisionaría con la acción. El neutro deja el color de acción sin competencia.
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs + 2.dp),
         ) {
             Text(
                 "¿Qué son las reglas?",
@@ -196,8 +201,8 @@ private fun FormularioRegla(
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm + Espaciado.xs),
         ) {
             Text(
                 "Nueva regla",
@@ -246,12 +251,15 @@ private fun FormularioRegla(
             )
 
             Text("Acción", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Espaciado.sm)) {
                 AccionFirewall.entries.forEach { opcion ->
+                    // Guarda del color: al seleccionar, Permitir = primary (cian) y Bloquear =
+                    // secondary (índigo). Neutros y distintos, nunca verde/rojo.
                     FilterChip(
                         selected = accion == opcion,
                         onClick = { onAccionCambiada(opcion) },
                         label = { Text(textoAccion(opcion)) },
+                        colors = coloresChipAccion(opcion),
                     )
                 }
             }
@@ -275,6 +283,23 @@ private fun FormularioRegla(
             }
         }
     }
+}
+
+/**
+ * Colores del [FilterChip] de acción según la guarda del color: seleccionado, Permitir usa el rol
+ * primary (cian) y Bloquear el secondary (índigo). Sin seleccionar, ambos quedan neutros (default).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun coloresChipAccion(accion: AccionFirewall) = when (accion) {
+    AccionFirewall.ALLOW -> FilterChipDefaults.filterChipColors(
+        selectedContainerColor = MaterialTheme.colorScheme.primary,
+        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+    )
+    AccionFirewall.DENY -> FilterChipDefaults.filterChipColors(
+        selectedContainerColor = MaterialTheme.colorScheme.secondary,
+        selectedLabelColor = MaterialTheme.colorScheme.onSecondary,
+    )
 }
 
 /**
@@ -346,23 +371,26 @@ private fun FilaRegla(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(Espaciado.md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
             ) {
+                // Acción + servicio (texto humano); el color de la acción sigue la guarda
+                // (Permitir = cian, Bloquear = índigo), nunca verde/rojo.
                 Text(
-                    "${textoAccion(regla.accion)} · ${CatalogoPuertos.etiqueta(regla.puerto)}",
+                    "${textoAccion(regla.accion)} · ${CatalogoPuertos.nombreDe(regla.puerto) ?: "Puerto personalizado"}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = colorAccion(regla.accion),
                 )
+                // Datos técnicos en monoespaciado (puerto e IP).
                 Text(
-                    regla.ip?.let { "Origen: $it" } ?: "Origen: cualquier IP",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Puerto ${regla.puerto} · ${regla.ip?.let { "IP $it" } ?: "cualquier IP"}",
+                    style = TipografiaDatosTecnicos,
                 )
                 Text(
                     if (regla.activa) "Activa" else "Inactiva (el motor la ignora)",
@@ -377,10 +405,16 @@ private fun FilaRegla(
 
 @Composable
 private fun TarjetaSinReglas(modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
         ) {
             Text(
                 "Aún no tienes reglas",
@@ -411,8 +445,8 @@ private fun TarjetaError(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(
@@ -430,10 +464,15 @@ private fun textoAccion(accion: AccionFirewall): String = when (accion) {
     AccionFirewall.DENY -> "Bloquear"
 }
 
+/**
+ * Color de la acción según la guarda pedagógica: Permitir = primary (cian), Bloquear = secondary
+ * (índigo). NEUTROS y distintos, nunca verde/rojo — el rojo queda reservado a errores/fallos
+ * reales, no a la acción "Bloquear".
+ */
 @Composable
 private fun colorAccion(accion: AccionFirewall): Color = when (accion) {
     AccionFirewall.ALLOW -> MaterialTheme.colorScheme.primary
-    AccionFirewall.DENY -> MaterialTheme.colorScheme.error
+    AccionFirewall.DENY -> MaterialTheme.colorScheme.secondary
 }
 
 // --- Previews ---
