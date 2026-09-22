@@ -3,6 +3,7 @@ package com.ejemplo.nettycoon.ui.panel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.domain.firewall.ProcesarAtaqueUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ class PanelViewModel(
     private val uid: String,
     private val useCase: ProcesarAtaqueUseCase,
     private val partidaRepo: PartidaRepository,
+    private val regenerador: RegeneradorSalud,
 ) : ViewModel() {
 
     private val _estado = MutableStateFlow(PanelUiState())
@@ -41,16 +43,19 @@ class PanelViewModel(
      * instante los cambios que otras pantallas (p. ej. "Ataque en vivo") persisten en la misma fila
      * de Room.
      *
-     * El `getOrCreatePartida` inicial solo GARANTIZA que exista la fila; a propósito no publica su
-     * resultado en `_estado` para no competir con la primera emisión del [PartidaRepository.observarPartida].
-     * El estado visible viene siempre del Flow, y es esa primera emisión la que baja `cargando`.
+     * Antes de observar, aplica la regeneración de salud por tiempo real (E2): si corresponde,
+     * `regenerador.aplicar` persiste la salud al día en Room, y como el estado visible viene del
+     * Flow, la subida se refleja en la primera emisión sin lógica extra aquí. También GARANTIZA que
+     * exista la fila; a propósito no publica su resultado en `_estado` para no competir con la
+     * primera emisión del [PartidaRepository.observarPartida]. El estado visible viene siempre del
+     * Flow, y es esa primera emisión la que baja `cargando`.
      */
     private fun cargarPartida() {
         _estado.update { it.copy(cargando = true, error = null) }
         viewModelScope.launch {
             try {
-                // Solo asegura la existencia de la fila; NO se publica (lo hace el Flow).
-                partidaRepo.getOrCreatePartida(uid)
+                // Regenera (si toca) y asegura la fila; NO se publica (lo hace el Flow).
+                regenerador.aplicar(uid)
             } catch (e: Exception) {
                 _estado.update {
                     it.copy(

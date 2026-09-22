@@ -5,6 +5,7 @@ import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.GeoIpRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ProcesarAtaqueUseCase
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
@@ -84,7 +85,14 @@ class PanelViewModelTest {
             partidaRepo = partidaRepo,
             geoIpRepo = GeoIpRepository(),
         )
-        return PanelViewModel(uid, useCase, partidaRepo) to partidaRepo
+        // Regenerador neutro: el ancla por defecto es "ahora", así que no regenera nada y no
+        // interfiere con las aserciones de este test (la regen tiene su propio test).
+        val regenerador = RegeneradorSalud(
+            partidaRepo = partidaRepo,
+            leerAncla = { _, porDefecto -> porDefecto },
+            guardarAncla = { _, _ -> },
+        )
+        return PanelViewModel(uid, useCase, partidaRepo, regenerador) to partidaRepo
     }
 
     @Before

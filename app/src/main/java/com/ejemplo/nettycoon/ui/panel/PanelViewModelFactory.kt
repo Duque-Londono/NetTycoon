@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ejemplo.nettycoon.data.local.NetTycoonDatabase
+import com.ejemplo.nettycoon.data.local.prefs.PreferenciasRegen
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.GeoIpRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ProcesarAtaqueUseCase
 
@@ -25,6 +27,12 @@ class PanelViewModelFactory(
 
     private val db = NetTycoonDatabase.obtenerInstancia(context.applicationContext)
     private val partidaRepo = PartidaRepository(db.estadoPartidaDao())
+    private val prefsRegen = PreferenciasRegen(context.applicationContext)
+    private val regenerador = RegeneradorSalud(
+        partidaRepo = partidaRepo,
+        leerAncla = prefsRegen::anclaDe,
+        guardarAncla = prefsRegen::guardarAncla,
+    )
     private val useCase = ProcesarAtaqueUseCase(
         reglaRepo = ReglaFirewallRepository(db.reglaFirewallDao()),
         eventoRepo = EventoAtaqueRepository(db.eventoAtaqueDao()),
@@ -37,6 +45,6 @@ class PanelViewModelFactory(
         require(modelClass.isAssignableFrom(PanelViewModel::class.java)) {
             "ViewModel desconocido: ${modelClass.name}"
         }
-        return PanelViewModel(uid, useCase, partidaRepo) as T
+        return PanelViewModel(uid, useCase, partidaRepo, regenerador) as T
     }
 }

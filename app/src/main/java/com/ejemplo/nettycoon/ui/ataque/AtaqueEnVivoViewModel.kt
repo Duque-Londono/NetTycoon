@@ -9,6 +9,7 @@ import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ConsecuenciasPartida
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
@@ -56,6 +57,7 @@ class AtaqueEnVivoViewModel(
     private val partidaRepo: PartidaRepository,
     private val eventoRepo: EventoAtaqueRepository,
     private val reglaRepo: ReglaFirewallRepository,
+    private val regenerador: RegeneradorSalud,
     private val escenarios: List<EscenarioAtaque> = CatalogoAtaques.escenarios,
     nivelInicial: Dificultad? = null,
     private val seleccionarSiguiente: (actual: Int?, total: Int) -> Int = ::progresionSecuencial,
@@ -89,13 +91,26 @@ class AtaqueEnVivoViewModel(
         nivelInicial?.let { iniciarNivel(it) }
     }
 
-    /** Carga (o crea) la partida del usuario para mostrar métricas y aplicarles consecuencias. */
+    /**
+     * Carga (o crea) la partida del usuario para mostrar métricas y aplicarles consecuencias.
+     *
+     * Antes de leer, aplica la regeneración de salud por tiempo real (E2) para que tanto las
+     * métricas como el candado usen la salud al día. Si la salud regenerada sigue en 0, la red
+     * queda [AtaqueEnVivoUiState.comprometida] y la pantalla bloquea el juego.
+     */
     private fun cargarPartida() {
         _estado.update { it.copy(cargando = true, error = null) }
         viewModelScope.launch {
             try {
+                regenerador.aplicar(uid)
                 val partida = partidaRepo.getOrCreatePartida(uid)
-                _estado.update { it.copy(partida = partida, cargando = false) }
+                _estado.update {
+                    it.copy(
+                        partida = partida,
+                        comprometida = partida.saludRed <= SALUD_COMPROMETIDA,
+                        cargando = false,
+                    )
+                }
             } catch (e: Exception) {
                 _estado.update {
                     it.copy(cargando = false, error = mensajeDeError("cargar la partida", e))
@@ -356,6 +371,12 @@ class AtaqueEnVivoViewModel(
      */
     fun onSiguienteAtaque() {
         if (nivelEscenarios.isEmpty()) return
+        // Candado E2: si el golpe recién mostrado dejó la red comprometida (salud <= 0), no se
+        // carga la siguiente ronda; la pantalla muestra el bloqueo (el veredicto ya se vio).
+        if ((_estado.value.partida?.saludRed ?: 1) <= SALUD_COMPROMETIDA) {
+            _estado.update { it.copy(escenario = null, ultimoResultado = null, comprometida = true) }
+            return
+        }
         val siguiente = seleccionarSiguiente(posicion, nivelEscenarios.size)
         if (siguiente !in nivelEscenarios.indices) {
             _estado.update {
@@ -472,6 +493,9 @@ class AtaqueEnVivoViewModel(
     private companion object {
         /** Aciertos repetidos del mismo patrón (familia + acción) que disparan la sugerencia. */
         const val UMBRAL_SUGERENCIA = 3
+
+        /** Salud a la que (o por debajo de la que) la red se considera comprometida (candado E2). */
+        const val SALUD_COMPROMETIDA = 0
 
         fun categoriaDe(esMalicioso: Boolean, bloquear: Boolean): CategoriaResultado = when {
             esMalicioso && bloquear -> CategoriaResultado.BLOQUEO_CORRECTO

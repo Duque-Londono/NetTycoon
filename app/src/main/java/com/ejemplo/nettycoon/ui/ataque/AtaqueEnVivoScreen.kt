@@ -51,6 +51,7 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
+import com.ejemplo.nettycoon.ui.componentes.EstadoSalud
 import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
 import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.LocalColoresJuego
@@ -129,6 +130,11 @@ fun AtaqueEnVivoScreen(
             verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
             when {
+                // Candado E2: red comprometida (salud <= 0). Bloquea SOLO esta pantalla; el
+                // jugador puede volver y gestionar el resto de la app mientras la salud se
+                // regenera sola con el tiempo.
+                estado.comprometida -> TarjetaRedComprometida()
+
                 // Selector de nivel: aún no se ha elegido dificultad.
                 estado.nivel == null -> SelectorNivel(onElegirNivel = onElegirNivel)
 
@@ -313,6 +319,55 @@ private fun ChipInfo(texto: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = Espaciado.sm, vertical = Espaciado.xs),
         )
+    }
+}
+
+/**
+ * Candado E2: la red está COMPROMETIDA (salud <= 0). Bloquea el juego en esta pantalla con un
+ * mensaje claro; el resto de la app sigue navegable y la salud se regenera sola con el tiempo.
+ * Reutiliza el color `danger` y la etiqueta de [EstadoSalud.COMPROMETIDA] (coherencia visual).
+ */
+@Composable
+private fun TarjetaRedComprometida(modifier: Modifier = Modifier) {
+    val colores = LocalColoresJuego.current
+    // Etiqueta reutilizada del estado presentacional de salud ya existente.
+    val etiqueta = when (EstadoSalud.COMPROMETIDA) {
+        EstadoSalud.SEGURA -> "Segura"
+        EstadoSalud.EN_RIESGO -> "En riesgo"
+        EstadoSalud.COMPROMETIDA -> "Comprometida"
+    }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = colores.danger),
+    ) {
+        Column(
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Espaciado.sm),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Cancel,
+                    contentDescription = null,
+                    tint = colores.onDanger,
+                )
+                Text(
+                    "Red $etiqueta",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = colores.onDanger,
+                )
+            }
+            // COPY BORRADOR (validación del equipo).
+            Text(
+                "Tu red está comprometida. Se recupera sola con el tiempo. Mientras tanto no " +
+                    "puedes jugar ataques, pero sí revisar tus reglas, la configuración de red y tu progreso.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colores.onDanger,
+            )
+        }
     }
 }
 

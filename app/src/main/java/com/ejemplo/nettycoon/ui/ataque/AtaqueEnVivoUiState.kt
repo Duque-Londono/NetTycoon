@@ -38,6 +38,13 @@ data class AtaqueEnVivoUiState(
     val rondas: Int = 0,
     val cargando: Boolean = true,
     val evaluandoRegla: Boolean = false,
+    /**
+     * `true` si la red está COMPROMETIDA (salud <= 0): el candado E2 bloquea SOLO esta pantalla
+     * (no se pueden jugar ataques) hasta que la salud vuelva a ser > 0 por la regeneración por
+     * tiempo real. El resto de la app sigue navegable. Se evalúa al entrar y al pedir el siguiente
+     * ataque (tras mostrar el veredicto del golpe final).
+     */
+    val comprometida: Boolean = false,
     val error: String? = null,
     /**
      * Aviso breve tras aceptar una sugerencia del puente (cuántas reglas se crearon, o que ya
