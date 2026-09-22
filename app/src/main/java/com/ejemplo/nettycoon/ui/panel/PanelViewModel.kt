@@ -7,6 +7,7 @@ import com.ejemplo.nettycoon.domain.firewall.ProcesarAtaqueUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -35,13 +36,21 @@ class PanelViewModel(
         cargarPartida()
     }
 
-    /** Carga (o crea) el estado de partida inicial del usuario. */
+    /**
+     * Observa el estado de partida del usuario de forma REACTIVA, de modo que el Panel refleje al
+     * instante los cambios que otras pantallas (p. ej. "Ataque en vivo") persisten en la misma fila
+     * de Room.
+     *
+     * El `getOrCreatePartida` inicial solo GARANTIZA que exista la fila; a propósito no publica su
+     * resultado en `_estado` para no competir con la primera emisión del [PartidaRepository.observarPartida].
+     * El estado visible viene siempre del Flow, y es esa primera emisión la que baja `cargando`.
+     */
     private fun cargarPartida() {
         _estado.update { it.copy(cargando = true, error = null) }
         viewModelScope.launch {
             try {
-                val partida = partidaRepo.getOrCreatePartida(uid)
-                _estado.update { it.copy(partida = partida, cargando = false) }
+                // Solo asegura la existencia de la fila; NO se publica (lo hace el Flow).
+                partidaRepo.getOrCreatePartida(uid)
             } catch (e: Exception) {
                 _estado.update {
                     it.copy(
@@ -49,7 +58,20 @@ class PanelViewModel(
                         error = "No se pudo cargar la partida: ${e.message ?: "error desconocido"}.",
                     )
                 }
+                return@launch
             }
+            partidaRepo.observarPartida(uid)
+                .catch { e ->
+                    _estado.update {
+                        it.copy(
+                            cargando = false,
+                            error = "No se pudo cargar la partida: ${e.message ?: "error desconocido"}.",
+                        )
+                    }
+                }
+                .collect { partida ->
+                    _estado.update { it.copy(partida = partida, cargando = false) }
+                }
         }
     }
 
