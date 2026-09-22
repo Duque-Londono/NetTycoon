@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.auth.AuthViewModel
 import com.ejemplo.nettycoon.auth.EstadoOperacion
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 
 /**
  * Pantalla de registro (Material 3).
@@ -58,20 +60,23 @@ fun RegistroScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(Espaciado.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        // Misma identidad de marca que Login: título destacado con el acento del tema.
         Text(
             text = "Crear cuenta",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
         )
         Text(
             text = "Regístrate para empezar a jugar",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(Espaciado.xl))
 
         OutlinedTextField(
             value = estado.email,
@@ -83,7 +88,7 @@ fun RegistroScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Espaciado.md))
 
         OutlinedTextField(
             value = estado.password,
@@ -102,7 +107,7 @@ fun RegistroScreen(
             },
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Espaciado.md))
 
         OutlinedTextField(
             value = estado.confirmarPassword,
@@ -124,7 +129,7 @@ fun RegistroScreen(
 
         val mensajeError = estado.mensajeError
         if (mensajeError != null) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Espaciado.sm))
             Text(
                 text = mensajeError,
                 color = MaterialTheme.colorScheme.error,
@@ -133,7 +138,7 @@ fun RegistroScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Espaciado.lg))
 
         Button(
             onClick = viewModel::registrar,
@@ -151,7 +156,7 @@ fun RegistroScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Espaciado.sm))
         TextButton(onClick = onVolverALogin, enabled = !estado.cargando) {
             Text("¿Ya tienes cuenta? Inicia sesión")
         }

@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -31,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.BuildConfig
 import com.ejemplo.nettycoon.auth.AuthViewModel
 import com.ejemplo.nettycoon.auth.EstadoOperacion
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 
 /**
  * Pantalla de inicio de sesión (Material 3).
@@ -58,20 +60,23 @@ fun LoginScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+            .padding(Espaciado.lg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        // Marca: título destacado con el acento del tema.
         Text(
             text = "NetTycoon",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.displaySmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
         )
         Text(
             text = "Inicia sesión para continuar",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(Espaciado.xl))
 
         OutlinedTextField(
             value = estado.email,
@@ -83,7 +88,7 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Espaciado.md))
 
         OutlinedTextField(
             value = estado.password,
@@ -105,7 +110,7 @@ fun LoginScreen(
 
         val mensajeError = estado.mensajeError
         if (mensajeError != null) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Espaciado.sm))
             Text(
                 text = mensajeError,
                 color = MaterialTheme.colorScheme.error,
@@ -114,7 +119,7 @@ fun LoginScreen(
             )
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Espaciado.lg))
 
         Button(
             onClick = viewModel::iniciarSesion,
@@ -132,7 +137,7 @@ fun LoginScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Espaciado.sm))
         TextButton(onClick = onNavegarARegistro, enabled = !estado.cargando) {
             Text("¿No tienes cuenta? Regístrate")
         }
