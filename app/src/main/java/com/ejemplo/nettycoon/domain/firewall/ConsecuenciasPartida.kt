@@ -9,6 +9,10 @@ import com.ejemplo.nettycoon.domain.model.ResultadoEvaluacion
  *
  * Función pura: recibe el estado actual y devuelve una **copia** actualizada, sin tocar
  * Room. Las cifras viven en [BalancePartida] para poder ajustarlas sin cambiar esta lógica.
+ *
+ * **Escudo (E3):** este es el único punto del proyecto donde el daño de salud llega a aplicarse,
+ * así que también es donde el escudo intercepta. La intercepción NO cambia los valores de daño ni
+ * la clasificación del resultado: solo decide si ese daño ya calculado llega a restarse.
  */
 object ConsecuenciasPartida {
 
@@ -41,6 +45,17 @@ object ConsecuenciasPartida {
             }
         }
 
+        // E3 — El escudo absorbe el PRÓXIMO golpe de salud y se consume.
+        //
+        // Se evalúa aquí, con el daño de E1 ya calculado arriba y SIN modificarlo: lo único que
+        // decide el escudo es si ese daño llega a aplicarse. Condiciones:
+        // - Solo si el golpe realmente iba a restar salud (deltaSalud < 0): un acierto NO lo gasta.
+        // - Solo afecta a la SALUD. El castigo de dinero y de puntaje sigue íntegro, igual que la
+        //   categoría y la lección: el jugador sobrevive, pero el error se paga y se ve.
+        // - Un solo uso: tras absorber, el escudo queda desactivado.
+        val escudoAbsorbe = estado.escudoActivo && deltaSalud < 0
+        if (escudoAbsorbe) deltaSalud = 0
+
         val nuevoPuntaje = (estado.puntaje + deltaPuntaje).coerceAtLeast(0)
         val nuevaSalud = (estado.saludRed + deltaSalud)
             .coerceIn(BalancePartida.SALUD_MIN, BalancePartida.SALUD_MAX)
@@ -55,6 +70,7 @@ object ConsecuenciasPartida {
             saludRed = nuevaSalud,
             dineroVirtual = nuevoDinero,
             nivel = nuevoNivel,
+            escudoActivo = estado.escudoActivo && !escudoAbsorbe,
             actualizadoEn = ahora,
         )
     }

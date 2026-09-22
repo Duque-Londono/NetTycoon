@@ -33,6 +33,32 @@ object BalancePartida {
     const val DINERO_FALSO_POSITIVO = -25
     const val DINERO_MIN = 0
 
+    // --- Tienda (E3): en qué GASTAR el dinero ---
+    // Calibrado contra la economía real de arriba: un acierto da +50$, una brecha cuesta -100$.
+    // La regeneración gratuita de E2 sigue siendo el piso garantizado; curar es un ATAJO de pago,
+    // nunca la única salida, así que estos precios pueden ser exigentes sin bloquear a nadie.
+
+    /**
+     * Precio por cada +1 de salud al curar. Se cobra por punto (y no por paquete cerrado) para que
+     * no haya arbitraje entre paquetes: ninguno sale más barato por punto que otro.
+     *
+     * Referencia: reparar una brecha (-20 de salud) cuesta 120$ ≈ 2,4 aciertos, frente a 20 minutos
+     * de espera gratis.
+     */
+    const val PRECIO_CURA_POR_PUNTO = 6
+
+    /** Paquete chico de cura: +25 de salud (150$ a pleno). */
+    const val CURA_PAQUETE_CHICO = 25
+
+    /** Paquete grande de cura: +50 de salud (300$ a pleno). */
+    const val CURA_PAQUETE_GRANDE = 50
+
+    /**
+     * Precio del escudo de un uso. Es una APUESTA, no un ahorro seguro: si absorbe una brecha
+     * (-20) evita 120$ de cura, pero si absorbe un falso positivo (-10) solo evita 60$.
+     */
+    const val PRECIO_ESCUDO = 100
+
     // --- Nivel ---
     /** Puntos necesarios por nivel: nivel = 1 + puntaje / PUNTOS_POR_NIVEL. */
     const val PUNTOS_POR_NIVEL = 100
