@@ -7,4 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Fondo base del tema oscuro "Centro de operaciones" (windowBackground). -->
+    <color name="consola_background">#FF0B0E14</color>
 </resources>
