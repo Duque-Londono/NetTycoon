@@ -720,8 +720,8 @@ private fun TarjetaAutomatizada(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
-            FilaDato("Puerto", automatizacion.puerto.toString())
-            FilaDato("IP", automatizacion.ip ?: "Cualquiera")
+            FilaDatoTecnico("Puerto", automatizacion.puerto.toString())
+            FilaDatoTecnico("IP", automatizacion.ip ?: "Cualquiera")
             FilaDato("Acción", automatizacion.accionTexto)
             FilaDato(
                 "Resultado",
