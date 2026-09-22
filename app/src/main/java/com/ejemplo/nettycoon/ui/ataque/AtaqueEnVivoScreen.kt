@@ -1,6 +1,7 @@
 package com.ejemplo.nettycoon.ui.ataque
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -28,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,7 +39,9 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
+import com.ejemplo.nettycoon.ui.theme.TipografiaDatosTecnicos
 
 /**
  * Pantalla "Ataque en vivo" (FASE 1 de UX pedagógica): invierte el bucle para que el jugador
@@ -105,9 +110,9 @@ fun AtaqueEnVivoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(Espaciado.md)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
             when {
                 // Selector de nivel: aún no se ha elegido dificultad.
@@ -210,6 +215,84 @@ private fun Dificultad.etiqueta(): String = when (this) {
 }
 
 /**
+ * Estilo visual de un chip de nivel. El nivel es META-INFO, no una acción: por eso NO usa los roles
+ * de las decisiones (primary/cian = Permitir, secondary/índigo = Bloquear). La progresión se
+ * transmite por INTENSIDAD dentro de una única familia neutra (violeta/tertiary → outline severo):
+ * Fácil el más tenue, subiendo hasta Imposible como chip severo perfilado (sin rojo).
+ */
+private data class EstiloChipNivel(
+    val contenedor: Color,
+    val contenido: Color,
+    val borde: BorderStroke?,
+)
+
+@Composable
+private fun estiloChipNivel(nivel: Dificultad): EstiloChipNivel {
+    val esquema = MaterialTheme.colorScheme
+    return when (nivel) {
+        Dificultad.FACIL -> EstiloChipNivel(
+            contenedor = esquema.tertiaryContainer.copy(alpha = 0.35f),
+            contenido = esquema.onSurfaceVariant,
+            borde = null,
+        )
+        Dificultad.MEDIO -> EstiloChipNivel(
+            contenedor = esquema.tertiaryContainer.copy(alpha = 0.6f),
+            contenido = esquema.onTertiaryContainer,
+            borde = null,
+        )
+        Dificultad.DIFICIL -> EstiloChipNivel(
+            contenedor = esquema.tertiaryContainer,
+            contenido = esquema.onTertiaryContainer,
+            borde = BorderStroke(1.dp, esquema.outlineVariant),
+        )
+        // Examen final: chip severo, perfilado y sin relleno (el más intenso, nunca rojo).
+        Dificultad.IMPOSIBLE -> EstiloChipNivel(
+            contenedor = Color.Transparent,
+            contenido = esquema.onSurface,
+            borde = BorderStroke(1.5.dp, esquema.outline),
+        )
+    }
+}
+
+/** Chip reutilizable con la etiqueta del nivel; acento por intensidad (ver [estiloChipNivel]). */
+@Composable
+private fun ChipNivel(nivel: Dificultad, modifier: Modifier = Modifier) {
+    val estilo = estiloChipNivel(nivel)
+    Surface(
+        modifier = modifier,
+        color = estilo.contenedor,
+        contentColor = estilo.contenido,
+        shape = MaterialTheme.shapes.small,
+        border = estilo.borde,
+    ) {
+        Text(
+            text = nivel.etiqueta(),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = Espaciado.sm, vertical = Espaciado.xs),
+        )
+    }
+}
+
+/** Chip neutro para meta-info textual (p. ej. la familia del patrón), fuera de los roles de acción. */
+@Composable
+private fun ChipInfo(texto: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Text(
+            text = texto,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = Espaciado.sm, vertical = Espaciado.xs),
+        )
+    }
+}
+
+/**
  * Selector inicial: el jugador elige el nivel. Cada opción trae una línea que explica, en lenguaje
  * de novato, qué tipo de casos verá, para que la elección sea informada y no a ciegas.
  */
@@ -217,8 +300,8 @@ private fun Dificultad.etiqueta(): String = when (this) {
 private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifier = Modifier) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm + Espaciado.xs),
         ) {
             Text(
                 "Elige tu nivel",
@@ -231,23 +314,23 @@ private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifie
                 style = MaterialTheme.typography.bodyMedium,
             )
             OpcionNivel(
-                titulo = "Fácil",
+                nivel = Dificultad.FACIL,
                 descripcion = "Casos claros para empezar: distingue lo normal de lo peligroso.",
                 onClick = { onElegirNivel(Dificultad.FACIL) },
             )
             OpcionNivel(
-                titulo = "Medio",
+                nivel = Dificultad.MEDIO,
                 descripcion = "Servicios sensibles y protocolos viejos: ya toca pensar un poco.",
                 onClick = { onElegirNivel(Dificultad.MEDIO) },
             )
             OpcionNivel(
-                titulo = "Difícil",
+                nivel = Dificultad.DIFICIL,
                 descripcion = "Casos con trampa: lo que parece sospechoso puede ser legítimo (y al revés).",
                 onClick = { onElegirNivel(Dificultad.DIFICIL) },
             )
             // COPY BORRADOR (validación del equipo): descripción + advertencia del nivel Imposible.
             OpcionNivel(
-                titulo = "Imposible",
+                nivel = Dificultad.IMPOSIBLE,
                 descripcion = "Sin ayudas: solo puerto e IP/país/ISP en crudo. Decides a ciegas.",
                 onClick = { onElegirNivel(Dificultad.IMPOSIBLE) },
             )
@@ -260,29 +343,34 @@ private fun SelectorNivel(onElegirNivel: (Dificultad) -> Unit, modifier: Modifie
     }
 }
 
+/**
+ * Tarjeta de opción de nivel. El acento va en el [ChipNivel] (meta-info por intensidad), no en el
+ * relleno de la tarjeta: así el color del nivel nunca compite con el cian/índigo de las acciones.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OpcionNivel(
-    titulo: String,
+    nivel: Dificultad,
     descripcion: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    Card(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(descripcion, style = MaterialTheme.typography.bodySmall)
+            ChipNivel(nivel = nivel)
+            Text(descripcion, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -299,11 +387,17 @@ private fun CabeceraNivel(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            "Nivel: ${nivel.etiqueta()}",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Espaciado.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Nivel",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            ChipNivel(nivel = nivel)
+        }
         TextButton(onClick = onCambiarNivel) { Text("Cambiar nivel") }
     }
 }
@@ -325,8 +419,8 @@ private fun TarjetaNivelCompletado(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(
                 "🎉 ¡Completaste este nivel!",
@@ -339,7 +433,7 @@ private fun TarjetaNivelCompletado(
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(Espaciado.md),
             ) {
                 Button(onClick = onReciclarNivel, modifier = Modifier.weight(1f)) {
                     Text("Repetir nivel")
@@ -365,7 +459,7 @@ private fun TarjetaContador(aciertos: Int, rondas: Int, modifier: Modifier = Mod
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(Espaciado.md),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Tu progreso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -391,8 +485,8 @@ private fun TarjetaSituacion(
 ) {
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             if (pelado) {
                 // COPY BORRADOR (validación del equipo): encabezado de la ronda pelada.
@@ -406,10 +500,11 @@ private fun TarjetaSituacion(
                 Text(escenario.textoSituacion, style = MaterialTheme.typography.bodyLarge)
                 FilaDato("Servicio", escenario.servicioNombre)
             }
-            FilaDato("Puerto", escenario.puerto.toString())
-            FilaDato("IP origen", escenario.ipAtacante)
-            FilaDato("País", escenario.pais)
-            FilaDato("ISP", escenario.isp)
+            // Datos técnicos en monoespaciado (se sienten "de consola"). Aplica también en pelado.
+            FilaDatoTecnico("Puerto", escenario.puerto.toString())
+            FilaDatoTecnico("IP origen", escenario.ipAtacante)
+            FilaDatoTecnico("País", escenario.pais)
+            FilaDatoTecnico("ISP", escenario.isp)
         }
     }
 }
@@ -424,8 +519,8 @@ private fun TarjetaPista(pista: String, modifier: Modifier = Modifier) {
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs + 2.dp),
         ) {
             Text("💡 Pista", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text(pista, style = MaterialTheme.typography.bodyMedium)
@@ -434,8 +529,10 @@ private fun TarjetaPista(pista: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Dos botones grandes de igual peso visual. No se colorea "Bloquear" como acción peligrosa: ambas
- * decisiones pueden ser la correcta según el caso, y sesgar el color enseñaría lo contrario.
+ * Dos botones grandes de igual peso visual. Guarda pedagógica del color: Permitir = primary (cian)
+ * y Bloquear = secondary (índigo); NEUTROS y distintos, nunca verde/rojo. Ambas decisiones pueden
+ * ser la correcta según el caso, así que sesgar el color (verde=bien, rojo=mal) enseñaría lo
+ * contrario. El verde/rojo (success/danger) queda reservado al RESULTADO y a la salud (fase C2).
  */
 @Composable
 private fun BotonesDecision(
@@ -446,7 +543,7 @@ private fun BotonesDecision(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(Espaciado.md),
     ) {
         Button(
             onClick = onPermitir,
@@ -468,8 +565,8 @@ private fun BotonesDecision(
                 .weight(1f)
                 .heightIn(min = 64.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.tertiary,
-                contentColor = MaterialTheme.colorScheme.onTertiary,
+                containerColor = MaterialTheme.colorScheme.secondary,
+                contentColor = MaterialTheme.colorScheme.onSecondary,
             ),
         ) {
             Text("Bloquear", style = MaterialTheme.typography.titleMedium)
@@ -489,6 +586,9 @@ private fun TarjetaVeredicto(
     pelado: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    // PLACEHOLDER C1: el color del veredicto es RESULTADO (acierto/fallo). El tratamiento definitivo
+    // con success/danger (verde/rojo de LocalColoresJuego) y el delta de salud llegan en fase C2;
+    // aquí se dejan los roles de M3 (primary/error) como marcador provisional, sin tocar la lógica.
     val colores = if (resultado.acierto) {
         CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -502,8 +602,8 @@ private fun TarjetaVeredicto(
     }
     Card(modifier = modifier.fillMaxWidth(), colors = colores) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(
                 if (resultado.acierto) "✅ ¡Bien hecho!" else "❌ Cuidado",
@@ -602,8 +702,8 @@ private fun TarjetaAutomatizada(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(
                 "🤖 Automatizado por tu regla",
@@ -679,8 +779,8 @@ private fun TarjetaSugerencia(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm + Espaciado.xs),
         ) {
             // COPY BORRADOR (validación del equipo): título de la tarjeta.
             Text(
@@ -688,6 +788,8 @@ private fun TarjetaSugerencia(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+            // Chip neutro con la familia del patrón (meta-info, no una acción).
+            ChipInfo(texto = sugerencia.familia)
             Text(sugerencia.texto, style = MaterialTheme.typography.bodyLarge)
 
             // Opción (1): precisa y segura → solo el puerto exacto.
@@ -741,8 +843,8 @@ private fun TarjetaError(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onLimpiarError, modifier = Modifier.align(Alignment.End)) {
@@ -770,8 +872,8 @@ private fun TarjetaAvisoReglas(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onLimpiar, modifier = Modifier.align(Alignment.End)) {
@@ -789,6 +891,23 @@ private fun FilaDato(etiqueta: String, valor: String) {
     ) {
         Text(etiqueta, style = MaterialTheme.typography.bodyMedium)
         Text(valor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * Variante de [FilaDato] para DATOS TÉCNICOS (puerto, IP, país, ISP): el valor va en monoespaciado
+ * ([TipografiaDatosTecnicos]) para que se lea "de consola". La etiqueta se mantiene en la tipografía
+ * normal del tema.
+ */
+@Composable
+private fun FilaDatoTecnico(etiqueta: String, valor: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(etiqueta, style = MaterialTheme.typography.bodyMedium)
+        Text(valor, style = TipografiaDatosTecnicos)
     }
 }
 
