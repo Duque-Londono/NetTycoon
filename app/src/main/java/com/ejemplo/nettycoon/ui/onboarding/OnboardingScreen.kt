@@ -26,9 +26,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 import kotlinx.coroutines.launch
 
@@ -56,12 +58,17 @@ fun OnboardingScreen(
     val esUltima = pagerState.currentPage == paginas.lastIndex
     val esPrimera = pagerState.currentPage == 0
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // Surface con el fondo del tema para asegurar la identidad oscura de la pantalla completa.
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // "Saltar" siempre visible, arriba a la derecha.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = Espaciado.sm, vertical = Espaciado.sm),
             horizontalArrangement = Arrangement.End,
         ) {
             TextButton(onClick = onSaltar) {
@@ -85,15 +92,15 @@ fun OnboardingScreen(
             actual = pagerState.currentPage,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 16.dp),
+                .padding(vertical = Espaciado.md),
         )
 
         // Controles: "Atrás" (salvo en la 1ª) + "Siguiente"/"Empezar".
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
+                .padding(horizontal = Espaciado.lg)
+                .padding(bottom = Espaciado.lg),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -124,6 +131,7 @@ fun OnboardingScreen(
             }
         }
     }
+    }
 }
 
 /** Contenido de una página: título y cuerpo centrados. */
@@ -135,16 +143,18 @@ private fun PaginaOnboardingContenido(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = Espaciado.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = pagina.titulo,
             style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(Espaciado.md))
         Text(
             text = pagina.texto,
             style = MaterialTheme.typography.bodyLarge,
@@ -163,7 +173,7 @@ private fun IndicadorPasos(
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(Espaciado.sm, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(total) { indice ->

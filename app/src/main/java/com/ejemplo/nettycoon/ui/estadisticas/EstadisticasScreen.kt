@@ -1,10 +1,15 @@
 package com.ejemplo.nettycoon.ui.estadisticas
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -18,13 +23,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.ui.theme.Espaciado
+import com.ejemplo.nettycoon.ui.theme.LocalColoresJuego
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 
 /**
@@ -72,9 +85,9 @@ fun EstadisticasScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(Espaciado.md)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
             when {
                 estado.cargando -> ContenidoCargando()
@@ -106,19 +119,30 @@ private fun ContenidoCargando() {
 
 @Composable
 private fun ContenidoConDatos(estado: EstadisticasUiState) {
-    // Métricas globales.
+    // Métricas globales, con la Tasa de acierto DESTACADA (tipografía de display del tema).
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(
                 "Tu desempeño",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+            // Métrica protagonista: número grande + etiqueta.
+            Text(
+                "${estado.tasaAciertoPct}%",
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                "Tasa de acierto",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             FilaMetrica("Ataques enfrentados", estado.totalAtaques.toString())
-            FilaMetrica("Tasa de acierto", "${estado.tasaAciertoPct}%")
             FilaMetrica("Aciertos / Total", "${estado.aciertos} / ${estado.totalAtaques}")
         }
     }
@@ -144,8 +168,8 @@ private fun ContenidoConDatos(estado: EstadisticasUiState) {
 private fun SeccionFamilias(titulo: String, familias: List<FamiliaResumen>) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm + Espaciado.xs),
         ) {
             Text(
                 titulo,
@@ -153,11 +177,12 @@ private fun SeccionFamilias(titulo: String, familias: List<FamiliaResumen>) {
                 fontWeight = FontWeight.Bold,
             )
             familias.forEach { familia ->
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Espaciado.xs)) {
                     FilaMetrica(
                         etiqueta = familia.nombre,
                         valor = "${familia.aciertoPct}% (${familia.aciertos}/${familia.total})",
                     )
+                    BarraProgreso(porcentaje = familia.aciertoPct, nivel = familia.nivel)
                     // Descripción de una línea (PLACEHOLDER, a validar por el equipo).
                     MapeoFamilias.descripcionDe(familia.nombre)?.let { descripcion ->
                         Text(
@@ -169,6 +194,50 @@ private fun SeccionFamilias(titulo: String, familias: List<FamiliaResumen>) {
                 }
             }
         }
+    }
+}
+
+/**
+ * Barra de progreso de dominio de una familia. Reusa el ENFOQUE de `MedidorSalud` (track +
+ * relleno animado con Compose puro) sin refactorizar el componente compartido: el llenado anima
+ * de 0 al valor al aparecer.
+ *
+ * El color respeta los umbrales YA existentes (vía [FamiliaResumen.nivel], que el ViewModel calcula
+ * con DOMINADA ≥70 / FLOJA <50): DOMINADA = success (verde), FLOJA = danger (rojo), NEUTRA = neutro
+ * (primary). Aquí verde/rojo es semántico de RESULTADO/desempeño, no de acción.
+ */
+@Composable
+private fun BarraProgreso(
+    porcentaje: Int,
+    nivel: NivelDominio,
+    modifier: Modifier = Modifier,
+) {
+    val colores = LocalColoresJuego.current
+    val color: Color = when (nivel) {
+        NivelDominio.DOMINADA -> colores.success
+        NivelDominio.FLOJA -> colores.danger
+        NivelDominio.NEUTRA -> MaterialTheme.colorScheme.primary
+    }
+
+    val fraccionObjetivo = (porcentaje.coerceIn(0, 100)) / 100f
+    var objetivo by remember { mutableStateOf(0f) }
+    LaunchedEffect(fraccionObjetivo) { objetivo = fraccionObjetivo }
+    val fraccionAnimada by animateFloatAsState(targetValue = objetivo, label = "fraccionDominio")
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraccionAnimada)
+                .fillMaxHeight()
+                .clip(MaterialTheme.shapes.small)
+                .background(color),
+        )
     }
 }
 
@@ -190,8 +259,8 @@ private fun TarjetaMensaje(
         },
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(titulo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(cuerpo, style = MaterialTheme.typography.bodyMedium)
