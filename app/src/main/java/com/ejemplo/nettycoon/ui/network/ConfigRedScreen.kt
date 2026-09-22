@@ -29,7 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
+import com.ejemplo.nettycoon.ui.theme.TipografiaDatosTecnicos
 
 /**
  * Pantalla de configuración de red: el jugador ve y edita la configuración básica de su partida
@@ -85,9 +87,9 @@ fun ConfigRedScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(Espaciado.md)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
             TarjetaIntro()
 
@@ -98,6 +100,7 @@ fun ConfigRedScreen(
                 placeholder = { Text("192.168.0.1") },
                 singleLine = true,
                 isError = estado.errorFormulario != null,
+                textStyle = TipografiaDatosTecnicos,
                 supportingText = {
                     Text(
                         "Es la dirección de tu router dentro de tu red: la puerta de entrada por " +
@@ -116,6 +119,7 @@ fun ConfigRedScreen(
                 label = { Text("Puerto LAN") },
                 singleLine = true,
                 isError = estado.errorFormulario != null,
+                textStyle = TipografiaDatosTecnicos,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 supportingText = {
                     Text(
@@ -132,6 +136,7 @@ fun ConfigRedScreen(
                 label = { Text("Puerto WAN") },
                 singleLine = true,
                 isError = estado.errorFormulario != null,
+                textStyle = TipografiaDatosTecnicos,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 supportingText = {
                     Text(
@@ -185,16 +190,18 @@ fun ConfigRedScreen(
  */
 @Composable
 private fun TarjetaIntro(modifier: Modifier = Modifier) {
+    // Meta-info en rol NEUTRO (surfaceVariant), coherente con "Mis reglas": el índigo queda
+    // reservado a la acción Bloquear (guarda del color de la Fase C/D).
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs + 2.dp),
         ) {
             Text(
                 "¿Qué es esta pantalla?",
@@ -223,7 +230,7 @@ private fun TarjetaLanVsWan(modifier: Modifier = Modifier) {
     ) {
         Text(
             "🏠 LAN = adentro (tu casa/oficina)  ·  🌐 WAN = afuera (internet)",
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(Espaciado.md),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -241,7 +248,7 @@ private fun TarjetaGuardado(modifier: Modifier = Modifier) {
     ) {
         Text(
             "Configuración guardada ✓",
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(Espaciado.md),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -262,8 +269,8 @@ private fun TarjetaError(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(
