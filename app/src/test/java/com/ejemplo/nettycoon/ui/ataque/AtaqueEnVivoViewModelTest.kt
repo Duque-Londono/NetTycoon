@@ -9,6 +9,7 @@ import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.domain.firewall.RegenSalud
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeReglaFirewallDao
@@ -120,6 +121,44 @@ class AtaqueEnVivoViewModelTest {
         leerAncla = { _, porDefecto -> porDefecto },
         guardarAncla = { _, _ -> },
     )
+
+    @Test
+    fun `refrescarRegen saca la salud de 0 y desbloquea el juego`() = runTest(dispatcher) {
+        val paso = RegenSalud.PASO_MS
+        val t0 = 1_000_000_000_000L
+        var ahora = t0
+        val anclas = mutableMapOf(uid to t0)
+
+        val partidaDao = FakeEstadoPartidaDao().apply {
+            almacen[uid] = partidaBase().copy(saludRed = 0)
+        }
+        val partidaRepo = PartidaRepository(partidaDao)
+        val regenerador = RegeneradorSalud(
+            partidaRepo = partidaRepo,
+            leerAncla = { u, def -> anclas[u] ?: def },
+            guardarAncla = { u, m -> anclas[u] = m },
+            reloj = { ahora },
+        )
+        val vm = AtaqueEnVivoViewModel(
+            uid = uid,
+            partidaRepo = partidaRepo,
+            eventoRepo = EventoAtaqueRepository(FakeEventoAtaqueDao()),
+            reglaRepo = ReglaFirewallRepository(FakeReglaFirewallDao()),
+            regenerador = regenerador,
+            nivelInicial = null,
+        )
+        advanceUntilIdle()
+        // Entra con salud 0: comprometida.
+        assertTrue(vm.estado.value.comprometida)
+
+        // Pasa un tramo: el contador dispara refrescarRegen y la salud sale de 0.
+        ahora = t0 + paso
+        vm.refrescarRegen()
+        advanceUntilIdle()
+
+        assertFalse(vm.estado.value.comprometida)
+        assertEquals(5, vm.estado.value.partida!!.saludRed)
+    }
 
     @Test
     fun `malicioso bloqueado es acierto, categoria bloqueo correcto y suma puntaje y dinero`() =

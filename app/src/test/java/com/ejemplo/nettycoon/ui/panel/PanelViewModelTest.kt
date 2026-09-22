@@ -8,6 +8,7 @@ import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ProcesarAtaqueUseCase
+import com.ejemplo.nettycoon.domain.firewall.RegenSalud
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeReglaFirewallDao
 import kotlinx.coroutines.Dispatchers
@@ -146,5 +147,41 @@ class PanelViewModelTest {
         assertFalse(estado.cargando)
         assertNotNull("getOrCreate debe haber creado la fila y el Flow emitirla", estado.partida)
         assertEquals(uid, estado.partida!!.owner)
+    }
+
+    @Test
+    fun `refrescarRegen sube la salud a la vista al cumplirse el tramo`() = runTest(dispatcher) {
+        val paso = RegenSalud.PASO_MS
+        val t0 = 1_000_000_000_000L
+        var ahora = t0
+        val anclas = mutableMapOf(uid to t0)
+
+        val dao = FakeEstadoPartidaDaoReactivo().apply { sembrar(partidaBase().copy(saludRed = 50)) }
+        val partidaRepo = PartidaRepository(dao)
+        val regenerador = RegeneradorSalud(
+            partidaRepo = partidaRepo,
+            leerAncla = { u, def -> anclas[u] ?: def },
+            guardarAncla = { u, m -> anclas[u] = m },
+            reloj = { ahora },
+        )
+        val useCase = ProcesarAtaqueUseCase(
+            reglaRepo = ReglaFirewallRepository(FakeReglaFirewallDao()),
+            eventoRepo = EventoAtaqueRepository(FakeEventoAtaqueDao()),
+            partidaRepo = partidaRepo,
+            geoIpRepo = GeoIpRepository(),
+        )
+        val vm = PanelViewModel(uid, useCase, partidaRepo, regenerador)
+        advanceUntilIdle()
+        // En init aún no ha pasado tiempo: salud intacta y ancla publicada.
+        assertEquals(50, vm.estado.value.partida!!.saludRed)
+        assertEquals(t0, vm.estado.value.anclaRegen)
+
+        // Pasa un tramo y el contador dispara la reaplicación.
+        ahora = t0 + paso
+        vm.refrescarRegen()
+        advanceUntilIdle()
+
+        assertEquals(55, vm.estado.value.partida!!.saludRed)
+        assertEquals(t0 + paso, vm.estado.value.anclaRegen)
     }
 }

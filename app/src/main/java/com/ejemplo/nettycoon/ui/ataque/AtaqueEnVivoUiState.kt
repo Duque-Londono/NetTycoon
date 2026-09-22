@@ -45,6 +45,11 @@ data class AtaqueEnVivoUiState(
      * ataque (tras mostrar el veredicto del golpe final).
      */
     val comprometida: Boolean = false,
+    /**
+     * Ancla de regeneración vigente (epoch millis), para derivar en la UI el contador "Jugable
+     * en …" cuando la red está [comprometida] (E2.1). `null` hasta resolver la carga inicial.
+     */
+    val anclaRegen: Long? = null,
     val error: String? = null,
     /**
      * Aviso breve tras aceptar una sugerencia del puente (cuántas reglas se crearon, o que ya

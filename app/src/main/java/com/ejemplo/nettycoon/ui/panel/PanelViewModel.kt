@@ -56,6 +56,7 @@ class PanelViewModel(
             try {
                 // Regenera (si toca) y asegura la fila; NO se publica (lo hace el Flow).
                 regenerador.aplicar(uid)
+                _estado.update { it.copy(anclaRegen = regenerador.anclaActual(uid)) }
             } catch (e: Exception) {
                 _estado.update {
                     it.copy(
@@ -110,6 +111,31 @@ class PanelViewModel(
         }
     }
 
+    /**
+     * Reaplica la regeneración por tiempo real (E2.1): cuando el contador de la UI cruza un tramo,
+     * dispara esto para que la salud suba a la vista sin salir de la pantalla. Sigue la MISMA ruta
+     * que E2 (`aplicar` → persiste en Room → el `observarPartida` reactivo re-emite la salud); aquí
+     * solo se actualiza además el ancla para reiniciar el contador. La vida sale siempre de la regen
+     * sobre el ancla real, no del contador. Ignora llamadas concurrentes.
+     */
+    fun refrescarRegen() {
+        if (refrescandoRegen) return
+        refrescandoRegen = true
+        viewModelScope.launch {
+            try {
+                regenerador.aplicar(uid)
+                _estado.update { it.copy(anclaRegen = regenerador.anclaActual(uid)) }
+            } catch (_: Exception) {
+                // Silencioso: es un refresco de fondo; la salud se recalculará al reentrar.
+            } finally {
+                refrescandoRegen = false
+            }
+        }
+    }
+
     /** Descarta el error actual (tras mostrarlo al usuario). */
     fun limpiarError() = _estado.update { it.copy(error = null) }
+
+    /** Guard anti-reentrada para [refrescarRegen] (evita reaplicar en paralelo por ticks seguidos). */
+    private var refrescandoRegen = false
 }

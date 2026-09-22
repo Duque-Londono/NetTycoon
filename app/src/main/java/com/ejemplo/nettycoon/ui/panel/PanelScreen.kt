@@ -43,6 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.ui.componentes.ContadorRegen
 import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
 import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
@@ -72,6 +73,7 @@ fun PanelScreen(
     PanelScreen(
         estado = estado,
         onLimpiarError = viewModel::limpiarError,
+        onRefrescarRegen = viewModel::refrescarRegen,
         onIrAAtaqueEnVivo = onIrAAtaqueEnVivo,
         onIrAReglas = onIrAReglas,
         onIrAConfigRed = onIrAConfigRed,
@@ -88,6 +90,7 @@ fun PanelScreen(
 fun PanelScreen(
     estado: PanelUiState,
     onLimpiarError: () -> Unit,
+    onRefrescarRegen: () -> Unit,
     onIrAAtaqueEnVivo: () -> Unit,
     onIrAReglas: () -> Unit,
     onIrAConfigRed: () -> Unit,
@@ -120,7 +123,11 @@ fun PanelScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
-            TarjetaSalud(partida = estado.partida)
+            TarjetaSalud(
+                partida = estado.partida,
+                anclaRegen = estado.anclaRegen,
+                onRefrescarRegen = onRefrescarRegen,
+            )
 
             if (estado.partida != null) {
                 MetricasSecundarias(partida = estado.partida)
@@ -170,9 +177,14 @@ private fun BotonContenido(icono: ImageVector, texto: String) {
     Text(texto, modifier = Modifier.padding(start = ButtonDefaults.IconSpacing))
 }
 
-/** Tarjeta protagonista: salud de la red con el medidor animado. */
+/** Tarjeta protagonista: salud de la red con el medidor animado y el contador de regen en vivo. */
 @Composable
-private fun TarjetaSalud(partida: EstadoPartida?, modifier: Modifier = Modifier) {
+private fun TarjetaSalud(
+    partida: EstadoPartida?,
+    anclaRegen: Long?,
+    onRefrescarRegen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -194,6 +206,16 @@ private fun TarjetaSalud(partida: EstadoPartida?, modifier: Modifier = Modifier)
                 Text("Cargando partida…", style = MaterialTheme.typography.bodyMedium)
             } else {
                 MedidorSalud(salud = partida.saludRed, maximo = 100)
+                // Contador solo mientras la salud no está llena (E2.1); a 100 no se muestra.
+                if (partida.saludRed in 1..99 && anclaRegen != null) {
+                    ContadorRegen(
+                        salud = partida.saludRed,
+                        ancla = anclaRegen,
+                        onPasoPendiente = onRefrescarRegen,
+                        prefijo = "Próxima +5 en",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -299,8 +321,10 @@ private fun PanelScreenPreview() {
         PanelScreen(
             estado = PanelUiState(
                 partida = EstadoPartida(owner = "demo", puntaje = 30, saludRed = 40, nivel = 2),
+                anclaRegen = System.currentTimeMillis(),
             ),
             onLimpiarError = {},
+            onRefrescarRegen = {},
             onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},
@@ -321,6 +345,7 @@ private fun PanelScreenCargandoPreview() {
                 cargando = true,
             ),
             onLimpiarError = {},
+            onRefrescarRegen = {},
             onIrAAtaqueEnVivo = {},
             onIrAReglas = {},
             onIrAConfigRed = {},

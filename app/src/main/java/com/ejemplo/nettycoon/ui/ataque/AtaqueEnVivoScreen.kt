@@ -51,6 +51,7 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
+import com.ejemplo.nettycoon.ui.componentes.ContadorRegen
 import com.ejemplo.nettycoon.ui.componentes.EstadoSalud
 import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
 import com.ejemplo.nettycoon.ui.theme.Espaciado
@@ -85,6 +86,7 @@ fun AtaqueEnVivoScreen(
         onAutomatizarPuerto = viewModel::automatizarPuerto,
         onAutomatizarFamilia = viewModel::automatizarFamilia,
         onLimpiarAvisoReglas = viewModel::limpiarAvisoReglas,
+        onRefrescarRegen = viewModel::refrescarRegen,
         onIrAReglas = onIrAReglas,
         onVolver = onVolver,
         modifier = modifier,
@@ -106,6 +108,7 @@ fun AtaqueEnVivoScreen(
     onAutomatizarPuerto: () -> Unit,
     onAutomatizarFamilia: () -> Unit,
     onLimpiarAvisoReglas: () -> Unit,
+    onRefrescarRegen: () -> Unit,
     onIrAReglas: () -> Unit,
     onVolver: () -> Unit,
     modifier: Modifier = Modifier,
@@ -133,7 +136,11 @@ fun AtaqueEnVivoScreen(
                 // Candado E2: red comprometida (salud <= 0). Bloquea SOLO esta pantalla; el
                 // jugador puede volver y gestionar el resto de la app mientras la salud se
                 // regenera sola con el tiempo.
-                estado.comprometida -> TarjetaRedComprometida()
+                estado.comprometida -> TarjetaRedComprometida(
+                    salud = estado.partida?.saludRed ?: 0,
+                    anclaRegen = estado.anclaRegen,
+                    onRefrescarRegen = onRefrescarRegen,
+                )
 
                 // Selector de nivel: aún no se ha elegido dificultad.
                 estado.nivel == null -> SelectorNivel(onElegirNivel = onElegirNivel)
@@ -328,7 +335,12 @@ private fun ChipInfo(texto: String, modifier: Modifier = Modifier) {
  * Reutiliza el color `danger` y la etiqueta de [EstadoSalud.COMPROMETIDA] (coherencia visual).
  */
 @Composable
-private fun TarjetaRedComprometida(modifier: Modifier = Modifier) {
+private fun TarjetaRedComprometida(
+    salud: Int,
+    anclaRegen: Long?,
+    onRefrescarRegen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colores = LocalColoresJuego.current
     // Etiqueta reutilizada del estado presentacional de salud ya existente.
     val etiqueta = when (EstadoSalud.COMPROMETIDA) {
@@ -367,6 +379,18 @@ private fun TarjetaRedComprometida(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = colores.onDanger,
             )
+            // Cuenta atrás hasta poder volver a jugar (el próximo +5 saca la salud de 0). Al
+            // cumplirse, reaplica la regen y la pantalla se desbloquea sola.
+            if (anclaRegen != null) {
+                ContadorRegen(
+                    salud = salud,
+                    ancla = anclaRegen,
+                    onPasoPendiente = onRefrescarRegen,
+                    prefijo = "Jugable en",
+                    color = colores.onDanger,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
         }
     }
 }
@@ -1119,7 +1143,7 @@ private fun AtaqueEnVivoSinDecidirPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1149,7 +1173,7 @@ private fun AtaqueEnVivoAciertoPermitirPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1179,7 +1203,7 @@ private fun AtaqueEnVivoFalloPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1223,7 +1247,7 @@ private fun AtaqueEnVivoConSugerenciaPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1258,7 +1282,7 @@ private fun AtaqueEnVivoAutomatizadoPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1293,7 +1317,7 @@ private fun AtaqueEnVivoAutomatizadoBrechaPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1307,7 +1331,7 @@ private fun AtaqueEnVivoSelectorPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1328,7 +1352,7 @@ private fun AtaqueEnVivoNivelCompletadoPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1349,7 +1373,7 @@ private fun AtaqueEnVivoImposibleSinDecidirPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1379,7 +1403,7 @@ private fun AtaqueEnVivoImposibleAciertoPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
@@ -1409,7 +1433,7 @@ private fun AtaqueEnVivoImposibleFalloPreview() {
             onElegirNivel = {}, onCambiarNivel = {}, onReciclarNivel = {},
             onPermitir = {}, onBloquear = {}, onSiguienteAtaque = {},
             onLimpiarError = {}, onAutomatizarPuerto = {}, onAutomatizarFamilia = {},
-            onLimpiarAvisoReglas = {}, onIrAReglas = {}, onVolver = {},
+            onLimpiarAvisoReglas = {}, onRefrescarRegen = {}, onIrAReglas = {}, onVolver = {},
         )
     }
 }
