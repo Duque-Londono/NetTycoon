@@ -6,13 +6,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Rule
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.MilitaryTech
+import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -28,16 +43,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
+import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 
 /**
- * Panel del juego: hub central. Muestra el estado de la partida y da acceso a las tres
- * pantallas: "Ataque en vivo" (donde el jugador decide y aprende), "Mis reglas" (CRUD para
- * automatizar decisiones) y "Configurar red".
+ * Panel del juego: hub central. Muestra el estado de la partida como un tablero de mando con la
+ * SALUD DE LA RED como protagonista, y da acceso a las pantallas del juego.
  *
- * La simulación de ronda ya no ocurre aquí: se traslada a la pantalla "Ataque en vivo". Los
- * miembros `simularAtaque`/`ultimaRonda` del [PanelViewModel] quedan sin uso a propósito en esta
- * fase (deuda anotada a limpiar más adelante); no se reabren en esta tarea.
+ * La simulación de ronda ya no ocurre aquí: se traslada a "Ataque en vivo". Los miembros
+ * `simularAtaque`/`ultimaRonda` del [PanelViewModel] quedan sin uso a propósito en esta fase
+ * (deuda anotada a limpiar más adelante); no se reabren en esta tarea.
  *
  * Punto de entrada con estado (conectado al ViewModel).
  */
@@ -86,7 +102,12 @@ fun PanelScreen(
             TopAppBar(
                 title = { Text("NetTycoon") },
                 actions = {
-                    TextButton(onClick = onCerrarSesion) { Text("Cerrar sesión") }
+                    IconButton(onClick = onCerrarSesion) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Logout,
+                            contentDescription = "Cerrar sesión",
+                        )
+                    }
                 },
             )
         },
@@ -95,45 +116,35 @@ fun PanelScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(Espaciado.md)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
-            TarjetaPartida(partida = estado.partida)
+            TarjetaSalud(partida = estado.partida)
 
+            if (estado.partida != null) {
+                MetricasSecundarias(partida = estado.partida)
+            }
+
+            // Acción primaria destacada.
             Button(
                 onClick = onIrAAtaqueEnVivo,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Ataque en vivo")
+                BotonContenido(Icons.Filled.Bolt, "Ataque en vivo")
             }
 
-            OutlinedButton(
-                onClick = onIrAReglas,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Mis reglas")
+            OutlinedButton(onClick = onIrAReglas, modifier = Modifier.fillMaxWidth()) {
+                BotonContenido(Icons.AutoMirrored.Filled.Rule, "Mis reglas")
             }
-
-            OutlinedButton(
-                onClick = onIrAConfigRed,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Configurar red")
+            OutlinedButton(onClick = onIrAConfigRed, modifier = Modifier.fillMaxWidth()) {
+                BotonContenido(Icons.Filled.Router, "Configurar red")
             }
-
-            OutlinedButton(
-                onClick = onIrAEstadisticas,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Mi progreso")
+            OutlinedButton(onClick = onIrAEstadisticas, modifier = Modifier.fillMaxWidth()) {
+                BotonContenido(Icons.Filled.BarChart, "Mi progreso")
             }
-
-            OutlinedButton(
-                onClick = onVerOnboarding,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cómo se juega")
+            OutlinedButton(onClick = onVerOnboarding, modifier = Modifier.fillMaxWidth()) {
+                BotonContenido(Icons.AutoMirrored.Filled.HelpOutline, "Cómo se juega")
             }
 
             if (estado.cargando) {
@@ -152,26 +163,101 @@ fun PanelScreen(
     }
 }
 
+/** Icono + texto para los botones de navegación, con la separación estándar de M3. */
 @Composable
-private fun TarjetaPartida(partida: EstadoPartida?, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth()) {
+private fun BotonContenido(icono: ImageVector, texto: String) {
+    Icon(icono, contentDescription = null, modifier = Modifier.size(18.dp))
+    Text(texto, modifier = Modifier.padding(start = ButtonDefaults.IconSpacing))
+}
+
+/** Tarjeta protagonista: salud de la red con el medidor animado. */
+@Composable
+private fun TarjetaSalud(partida: EstadoPartida?, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(
-                "Tu red",
+                "Salud de la red",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             if (partida == null) {
                 Text("Cargando partida…", style = MaterialTheme.typography.bodyMedium)
             } else {
-                FilaDato("Puntaje", partida.puntaje.toString())
-                FilaDato("Salud de la red", "${partida.saludRed} / 100")
-                FilaDato("Dinero virtual", "$${partida.dineroVirtual}")
-                FilaDato("Nivel", partida.nivel.toString())
+                MedidorSalud(salud = partida.saludRed, maximo = 100)
             }
+        }
+    }
+}
+
+/** Fila de métricas secundarias (celdas del tablero): puntaje, dinero, nivel. */
+@Composable
+private fun MetricasSecundarias(partida: EstadoPartida, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Espaciado.sm),
+    ) {
+        CeldaMetrica(
+            icono = Icons.Filled.Star,
+            etiqueta = "Puntaje",
+            valor = partida.puntaje.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        CeldaMetrica(
+            icono = Icons.Filled.Paid,
+            etiqueta = "Dinero",
+            valor = "$${partida.dineroVirtual}",
+            modifier = Modifier.weight(1f),
+        )
+        CeldaMetrica(
+            icono = Icons.Filled.MilitaryTech,
+            etiqueta = "Nivel",
+            valor = partida.nivel.toString(),
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun CeldaMetrica(
+    icono: ImageVector,
+    etiqueta: String,
+    valor: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Espaciado.sm),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
+        ) {
+            Icon(
+                icono,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                valor,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                etiqueta,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -190,8 +276,8 @@ private fun TarjetaError(
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
         ) {
             Text(mensaje, style = MaterialTheme.typography.bodyMedium)
             TextButton(
@@ -204,21 +290,6 @@ private fun TarjetaError(
     }
 }
 
-@Composable
-private fun FilaDato(etiqueta: String, valor: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(etiqueta, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            valor,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
-    }
-}
-
 // --- Previews ---
 
 @Preview(showBackground = true)
@@ -227,7 +298,7 @@ private fun PanelScreenPreview() {
     NetTycoonTheme {
         PanelScreen(
             estado = PanelUiState(
-                partida = EstadoPartida(owner = "demo", puntaje = 30, saludRed = 90, nivel = 2),
+                partida = EstadoPartida(owner = "demo", puntaje = 30, saludRed = 40, nivel = 2),
             ),
             onLimpiarError = {},
             onIrAAtaqueEnVivo = {},
