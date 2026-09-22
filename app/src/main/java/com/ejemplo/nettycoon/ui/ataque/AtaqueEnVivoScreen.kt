@@ -1,6 +1,11 @@
 package com.ejemplo.nettycoon.ui.ataque
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,14 +14,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -24,12 +34,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -39,7 +51,9 @@ import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.model.CategoriaResultado
+import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
 import com.ejemplo.nettycoon.ui.theme.Espaciado
+import com.ejemplo.nettycoon.ui.theme.LocalColoresJuego
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
 import com.ejemplo.nettycoon.ui.theme.TipografiaDatosTecnicos
 
@@ -122,6 +136,7 @@ fun AtaqueEnVivoScreen(
                 estado.nivelCompletado -> {
                     CabeceraNivel(nivel = estado.nivel, onCambiarNivel = onCambiarNivel)
                     TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
+                    estado.partida?.let { TarjetaSalud(salud = it.saludRed) }
                     TarjetaNivelCompletado(
                         aciertos = estado.aciertos,
                         rondas = estado.rondas,
@@ -139,6 +154,15 @@ fun AtaqueEnVivoScreen(
                     val pelado = estado.nivel == Dificultad.IMPOSIBLE
                     CabeceraNivel(nivel = estado.nivel, onCambiarNivel = onCambiarNivel)
                     TarjetaContador(aciertos = estado.aciertos, rondas = estado.rondas)
+                    // Salud de la red en contexto: el medidor anima el daño en cuanto saludRed baja
+                    // (hoy solo ocurre en una BRECHA, ver diagnóstico C2). El delta se muestra tras
+                    // decidir, ligado al deltaSalud REAL del veredicto.
+                    estado.partida?.let {
+                        TarjetaSalud(
+                            salud = it.saludRed,
+                            deltaSalud = estado.ultimoResultado?.deltaSalud ?: 0,
+                        )
+                    }
 
                     TarjetaSituacion(escenario = escenario, pelado = pelado)
                     if (!pelado) TarjetaPista(pista = escenario.textoPista)
@@ -455,6 +479,9 @@ private fun TarjetaNivelCompletado(
 
 @Composable
 private fun TarjetaContador(aciertos: Int, rondas: Int, modifier: Modifier = Modifier) {
+    // El número sube animado (no salta) cuando cambian aciertos/rondas tras una decisión.
+    val aciertosAnimados by animateIntAsState(targetValue = aciertos, label = "aciertos")
+    val rondasAnimadas by animateIntAsState(targetValue = rondas, label = "rondas")
     Card(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -464,10 +491,67 @@ private fun TarjetaContador(aciertos: Int, rondas: Int, modifier: Modifier = Mod
         ) {
             Text("Tu progreso", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(
-                "Aciertos: $aciertos / $rondas",
+                "Aciertos: $aciertosAnimados / $rondasAnimadas",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
+        }
+    }
+}
+
+/**
+ * Salud de la red en contexto durante "Ataque en vivo". Reutiliza [MedidorSalud] (fase B), que ya
+ * anima el llenado/color cuando [salud] cambia — así el jugador ve el "golpe" al recibir daño.
+ *
+ * [deltaSalud] es el efecto de la ÚLTIMA decisión (0 si no aplica). Cuando es distinto de cero se
+ * muestra un badge "-X / +X" con fade-in, en el color semántico ([LocalColoresJuego]). Va ligado al
+ * delta REAL del veredicto: si un fallo no toca la salud (falso positivo) o es un acierto, no
+ * aparece — es lo esperado dado el estado actual del dominio.
+ */
+@Composable
+private fun TarjetaSalud(
+    salud: Int,
+    modifier: Modifier = Modifier,
+    deltaSalud: Int = 0,
+) {
+    val colores = LocalColoresJuego.current
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Salud de la red",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                AnimatedVisibility(visible = deltaSalud != 0) {
+                    val positivo = deltaSalud > 0
+                    Surface(
+                        color = if (positivo) colores.success else colores.danger,
+                        contentColor = if (positivo) colores.onSuccess else colores.onDanger,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Text(
+                            text = conSigno(deltaSalud),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(
+                                horizontal = Espaciado.sm,
+                                vertical = Espaciado.xs,
+                            ),
+                        )
+                    }
+                }
+            }
+            MedidorSalud(salud = salud)
         }
     }
 }
@@ -578,6 +662,13 @@ private fun BotonesDecision(
  * Veredicto. El tratamiento visual depende SOLO de [ResultadoDecision.acierto]: un permiso
  * correcto se celebra igual que un bloqueo correcto (dejar pasar tráfico legítimo es tan valioso
  * como frenar un ataque).
+ *
+ * Fase C2 — la "vida" de la tarjeta:
+ * - Aparece con fade + scale-in ([AnimatedVisibility] con estado disparado al montarse).
+ * - Icono de resultado (check/cross) con un pequeño scale-in de entrada.
+ * - AQUÍ SÍ entran los colores de RESULTADO: acierto = success (verde) / fallo = danger (rojo) de
+ *   [LocalColoresJuego]. Es el único lugar (junto con la salud) donde va verde/rojo; las acciones
+ *   Permitir/Bloquear siguen en cian/índigo (la guarda pedagógica queda intacta).
  */
 @Composable
 private fun TarjetaVeredicto(
@@ -586,45 +677,78 @@ private fun TarjetaVeredicto(
     pelado: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // PLACEHOLDER C1: el color del veredicto es RESULTADO (acierto/fallo). El tratamiento definitivo
-    // con success/danger (verde/rojo de LocalColoresJuego) y el delta de salud llegan en fase C2;
-    // aquí se dejan los roles de M3 (primary/error) como marcador provisional, sin tocar la lógica.
-    val colores = if (resultado.acierto) {
-        CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    } else {
-        CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-        )
-    }
-    Card(modifier = modifier.fillMaxWidth(), colors = colores) {
-        Column(
-            modifier = Modifier.padding(Espaciado.md),
-            verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
-        ) {
-            Text(
-                if (resultado.acierto) "✅ ¡Bien hecho!" else "❌ Cuidado",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            // En Imposible se conserva el MARCADOR (acierto + efecto en la red) pero se apaga el
-            // material educativo: sin lección ni "¿Por qué?".
-            if (!pelado) Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                "Efecto en tu red",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            FilaDato("Puntaje", conSigno(resultado.deltaPuntaje))
-            FilaDato("Salud de la red", conSigno(resultado.deltaSalud))
-            FilaDato("Dinero virtual", conSigno(resultado.deltaDinero))
+    val colores = LocalColoresJuego.current
+    val contenedor = if (resultado.acierto) colores.success else colores.danger
+    val contenido = if (resultado.acierto) colores.onSuccess else colores.onDanger
 
-            if (!pelado) SeccionPorQue(explicacion = explicacion)
+    // Aparición: el estado arranca en false y pasa a true al primer frame → dispara fade + scale-in.
+    val estadoAparicion = remember { MutableTransitionState(false) }.apply { targetState = true }
+
+    AnimatedVisibility(
+        visibleState = estadoAparicion,
+        enter = fadeIn() + scaleIn(initialScale = 0.92f),
+    ) {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = contenedor,
+                contentColor = contenido,
+            ),
+            // Flash sutil: borde en el color semántico para reforzar el resultado sin parpadeos.
+            border = BorderStroke(1.dp, contenido.copy(alpha = 0.35f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(Espaciado.md),
+                verticalArrangement = Arrangement.spacedBy(Espaciado.sm),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Espaciado.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconoResultado(acierto = resultado.acierto)
+                    Text(
+                        if (resultado.acierto) "¡Bien hecho!" else "Cuidado",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                // En Imposible se conserva el MARCADOR (acierto + efecto en la red) pero se apaga el
+                // material educativo: sin lección ni "¿Por qué?".
+                if (!pelado) Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Efecto en tu red",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                FilaDato("Puntaje", conSigno(resultado.deltaPuntaje))
+                FilaDato("Salud de la red", conSigno(resultado.deltaSalud))
+                FilaDato("Dinero virtual", conSigno(resultado.deltaDinero))
+
+                if (!pelado) SeccionPorQue(explicacion = explicacion)
+            }
         }
     }
+}
+
+/**
+ * Icono de resultado del veredicto: check (acierto) / cross (fallo). Hace un breve scale-in de
+ * entrada (rebote leve) para dar vida al veredicto. Hereda el color del contenido de la tarjeta.
+ */
+@Composable
+private fun IconoResultado(acierto: Boolean, modifier: Modifier = Modifier) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    val escala by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        label = "escalaIconoResultado",
+    )
+    Icon(
+        imageVector = if (acierto) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+        contentDescription = if (acierto) "Acierto" else "Fallo",
+        modifier = modifier
+            .size(28.dp)
+            .scale(escala),
+    )
 }
 
 /**
