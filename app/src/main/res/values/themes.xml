@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.NetTycoon" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      Base oscura del "Centro de operaciones". Forzamos oscuro siempre (no hay values-night):
+      una sola base basta. windowBackground fija #0B0E14 para eliminar el flash blanco de
+      arranque antes de que Compose dibuje.
+    -->
+    <style name="Theme.NetTycoon" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/consola_background</item>
+    </style>
 </resources>
