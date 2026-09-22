@@ -20,5 +20,11 @@ data class PanelUiState(
     val partida: EstadoPartida? = null,
     val ultimaRonda: ResultadoRonda? = null,
     val cargando: Boolean = false,
+    /**
+     * Ancla de regeneración vigente (epoch millis), para derivar en la UI el contador de la próxima
+     * recuperación de salud (E2.1). `null` hasta que se resuelve la carga inicial. No es fuente de
+     * vida: la salud siempre sale de la regen real sobre el ancla en prefs.
+     */
+    val anclaRegen: Long? = null,
     val error: String? = null,
 )

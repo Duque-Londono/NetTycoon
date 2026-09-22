@@ -83,6 +83,9 @@ class AtaqueEnVivoViewModel(
     /** Patrones `(familia, acción)` para los que ya se mostró la sugerencia, para no repetirla. */
     private val patronesYaSugeridos = mutableSetOf<Pair<String, AccionFirewall>>()
 
+    /** Guard anti-reentrada para [refrescarRegen] (evita reaplicar en paralelo por ticks seguidos). */
+    private var refrescandoRegen = false
+
     private val _estado = MutableStateFlow(AtaqueEnVivoUiState())
     val estado: StateFlow<AtaqueEnVivoUiState> = _estado.asStateFlow()
 
@@ -108,6 +111,7 @@ class AtaqueEnVivoViewModel(
                     it.copy(
                         partida = partida,
                         comprometida = partida.saludRed <= SALUD_COMPROMETIDA,
+                        anclaRegen = regenerador.anclaActual(uid),
                         cargando = false,
                     )
                 }
@@ -115,6 +119,34 @@ class AtaqueEnVivoViewModel(
                 _estado.update {
                     it.copy(cargando = false, error = mensajeDeError("cargar la partida", e))
                 }
+            }
+        }
+    }
+
+    /**
+     * Reaplica la regeneración por tiempo real (E2.1): cuando la red está comprometida, el contador
+     * "Jugable en …" dispara esto al cumplirse el tramo para que la salud pase de 0 y se
+     * DESBLOQUEE el juego sin salir de la pantalla. Re-lee la partida y recalcula [comprometida]
+     * y el ancla. La vida sale de la regen sobre el ancla real, no del contador. Ignora concurrencia.
+     */
+    fun refrescarRegen() {
+        if (refrescandoRegen) return
+        refrescandoRegen = true
+        viewModelScope.launch {
+            try {
+                regenerador.aplicar(uid)
+                val partida = partidaRepo.getOrCreatePartida(uid)
+                _estado.update {
+                    it.copy(
+                        partida = partida,
+                        comprometida = partida.saludRed <= SALUD_COMPROMETIDA,
+                        anclaRegen = regenerador.anclaActual(uid),
+                    )
+                }
+            } catch (_: Exception) {
+                // Silencioso: refresco de fondo; se recalculará al reentrar.
+            } finally {
+                refrescandoRegen = false
             }
         }
     }

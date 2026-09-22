@@ -37,4 +37,11 @@ class RegeneradorSalud(
         }
         guardarAncla(uid, resultado.anclaNueva)
     }
+
+    /**
+     * Ancla vigente para el [uid] (para derivar el contador de la próxima recuperación, E2.1). Si
+     * aún no hay ninguna guardada, devuelve el instante actual (tramo recién empezado). Es solo
+     * lectura: no modifica el estado ni el modelo de regeneración.
+     */
+    fun anclaActual(uid: String): Long = leerAncla(uid, reloj())
 }
