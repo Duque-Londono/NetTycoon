@@ -54,11 +54,26 @@ class ConsecuenciasPartidaTest {
     }
 
     @Test
-    fun `falso positivo resta puntaje leve y dinero`() {
-        val r = ConsecuenciasPartida.aplicar(estado(puntaje = 100, dineroVirtual = 1000),
+    fun `falso positivo resta puntaje leve, salud y dinero`() {
+        val r = ConsecuenciasPartida.aplicar(estado(saludRed = 100, puntaje = 100, dineroVirtual = 1000),
             resultado(CategoriaResultado.FALSO_POSITIVO))
         assertEquals(100 + BalancePartida.PUNTAJE_FALSO_POSITIVO, r.puntaje) // 95
+        assertEquals(100 + BalancePartida.SALUD_FALSO_POSITIVO, r.saludRed) // 90
         assertEquals(1000 + BalancePartida.DINERO_FALSO_POSITIVO, r.dineroVirtual) // 975
+    }
+
+    @Test
+    fun `balance de salud - falso positivo resta 10 y brecha resta 20`() {
+        // Blindaje del balance E1: la indisponibilidad (falso positivo) cuesta la mitad que la
+        // inseguridad (brecha), y ambas restan salud desde la misma base.
+        assertEquals(-10, BalancePartida.SALUD_FALSO_POSITIVO)
+        assertEquals(-20, BalancePartida.SALUD_BRECHA)
+
+        val base = estado(saludRed = 100)
+        val falsoPositivo = ConsecuenciasPartida.aplicar(base, resultado(CategoriaResultado.FALSO_POSITIVO))
+        val brecha = ConsecuenciasPartida.aplicar(base, resultado(CategoriaResultado.BRECHA))
+        assertEquals(90, falsoPositivo.saludRed) // 100 - 10
+        assertEquals(80, brecha.saludRed) // 100 - 20
     }
 
     @Test
