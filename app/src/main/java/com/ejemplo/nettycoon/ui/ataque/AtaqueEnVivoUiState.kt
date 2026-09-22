@@ -79,6 +79,15 @@ data class ResultadoDecision(
     val deltaSalud: Int,
     val deltaDinero: Int,
     /**
+     * `true` si el jugador FALLÓ pero el escudo comprado en la tienda (E3) absorbió el golpe de
+     * salud, que por tanto quedó en 0 ([deltaSalud]), consumiendo el escudo.
+     *
+     * Es información ADICIONAL, no un cambio de veredicto: [acierto] sigue en `false` y la tarjeta
+     * se sigue pintando en rojo con su lección de error. El castigo de dinero y puntaje también
+     * sigue íntegro. Con default `false` para no romper previews/tests que no lo usan.
+     */
+    val escudoAbsorbio: Boolean = false,
+    /**
      * Sugerencia pedagógica para automatizar con una regla el patrón que el jugador acaba de
      * repetir con acierto, o `null` si esta ronda no dispara ninguna (lo habitual). Con default
      * `null` para no romper llamadas/previews/tests que no la usan.

@@ -27,6 +27,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -794,17 +795,69 @@ private fun TarjetaVeredicto(
                 // En Imposible se conserva el MARCADOR (acierto + efecto en la red) pero se apaga el
                 // material educativo: sin lección ni "¿Por qué?".
                 if (!pelado) Text(resultado.leccion, style = MaterialTheme.typography.bodyLarge)
+
+                // E3: si el escudo cubrió el golpe, se dice APARTE del veredicto y DESPUÉS de la
+                // lección, nunca en su lugar. El mensaje de arriba ("Cuidado" + rojo + lección)
+                // sigue diciendo que el jugador falló; este solo añade que sobrevivió esta vez.
+                if (resultado.escudoAbsorbio) AvisoEscudoAbsorbio()
+
                 Text(
                     "Efecto en tu red",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 FilaDato("Puntaje", conSigno(resultado.deltaPuntaje))
-                FilaDato("Salud de la red", conSigno(resultado.deltaSalud))
+                FilaDato(
+                    "Salud de la red",
+                    if (resultado.escudoAbsorbio) {
+                        "Sin cambio (escudo)"
+                    } else {
+                        conSigno(resultado.deltaSalud)
+                    },
+                )
                 FilaDato("Dinero virtual", conSigno(resultado.deltaDinero))
 
                 if (!pelado) SeccionPorQue(explicacion = explicacion)
             }
+        }
+    }
+}
+
+/**
+ * Aviso de que el escudo comprado en la tienda (E3) absorbió el golpe de salud.
+ *
+ * Va DENTRO de la tarjeta de veredicto y por eso hereda su color: si el jugador falló, sigue
+ * leyéndose sobre el rojo de error. Es deliberado — son DOS mensajes distintos y ninguno anula al
+ * otro: el veredicto dice que **falló** (icono, "Cuidado", color y lección intactos) y este bloque
+ * dice que **esta vez no lo pagó con salud**. Nunca debe poder leerse como un acierto, así que el
+ * texto nombra el error explícitamente y recuerda que el escudo ya se gastó.
+ *
+ * Se muestra también en el nivel Imposible (no es material educativo que ese nivel apague, sino un
+ * hecho sobre el estado de la partida, igual que la sección "Efecto en tu red").
+ */
+@Composable
+private fun AvisoEscudoAbsorbio(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        shape = MaterialTheme.shapes.small,
+        border = BorderStroke(1.dp, LocalContentColor.current.copy(alpha = 0.5f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(Espaciado.sm),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
+        ) {
+            Text(
+                "🛡️ Escudo absorbió el golpe",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "La decisión siguió siendo equivocada y el coste en dinero y puntaje se aplica " +
+                    "igual; lo único que cambia es que tu salud no bajó. El escudo era de un solo " +
+                    "uso: ya se gastó.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }
