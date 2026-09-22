@@ -6,6 +6,7 @@ import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
+import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
@@ -96,14 +97,28 @@ class AtaqueEnVivoViewModelTest {
         nivel: Dificultad = Dificultad.MEDIO,
         seleccionar: (Int?, Int) -> Int = { _, _ -> 0 },
         reglaDao: FakeReglaFirewallDao = FakeReglaFirewallDao(),
-    ) = AtaqueEnVivoViewModel(
-        uid = uid,
-        partidaRepo = PartidaRepository(partidaDao),
-        eventoRepo = EventoAtaqueRepository(eventoDao),
-        reglaRepo = ReglaFirewallRepository(reglaDao),
-        escenarios = escenarios,
-        nivelInicial = nivel,
-        seleccionarSiguiente = seleccionar,
+    ): AtaqueEnVivoViewModel {
+        val partidaRepo = PartidaRepository(partidaDao)
+        return AtaqueEnVivoViewModel(
+            uid = uid,
+            partidaRepo = partidaRepo,
+            eventoRepo = EventoAtaqueRepository(eventoDao),
+            reglaRepo = ReglaFirewallRepository(reglaDao),
+            regenerador = regeneradorNeutro(partidaRepo),
+            escenarios = escenarios,
+            nivelInicial = nivel,
+            seleccionarSiguiente = seleccionar,
+        )
+    }
+
+    /**
+     * Regenerador neutro para los tests que no ejercitan la regen: el ancla por defecto es "ahora",
+     * así que `RegenSalud.calcular` no suma nada y la salud queda como la deja E1.
+     */
+    private fun regeneradorNeutro(partidaRepo: PartidaRepository) = RegeneradorSalud(
+        partidaRepo = partidaRepo,
+        leerAncla = { _, porDefecto -> porDefecto },
+        guardarAncla = { _, _ -> },
     )
 
     @Test
@@ -212,6 +227,46 @@ class AtaqueEnVivoViewModelTest {
             assertEquals(90, partidaDao.almacen.getValue(uid).saludRed)
             assertEquals(legitimo.leccionError, resultado.leccion)
             assertEquals(0, vm.estado.value.aciertos)
+        }
+
+    // --- Candado E2: red comprometida (salud <= 0) ---
+
+    @Test
+    fun `entrar con salud 0 marca la red comprometida y no carga escenario`() =
+        runTest(dispatcher) {
+            val partidaDao = FakeEstadoPartidaDao().apply {
+                almacen[uid] = partidaBase().copy(saludRed = 0)
+            }
+            val vm = vmConNivel(partidaDao, FakeEventoAtaqueDao(), nivelInicial = null)
+            advanceUntilIdle()
+
+            assertTrue(vm.estado.value.comprometida)
+            assertNull(vm.estado.value.escenario)
+        }
+
+    @Test
+    fun `si el golpe final deja la salud en 0, la siguiente ronda queda bloqueada`() =
+        runTest(dispatcher) {
+            // Salud 20: permitir el malicioso (brecha -20) la lleva a 0.
+            val partidaDao = FakeEstadoPartidaDao().apply {
+                almacen[uid] = partidaBase().copy(saludRed = 20)
+            }
+            val vm = crearViewModel(partidaDao, FakeEventoAtaqueDao(), listOf(malicioso))
+            advanceUntilIdle()
+
+            vm.onPermitir()
+            advanceUntilIdle()
+            // El veredicto del golpe final SÍ se muestra (aún no está comprometida).
+            assertEquals(CategoriaResultado.BRECHA, vm.estado.value.ultimoResultado!!.categoria)
+            assertFalse(vm.estado.value.comprometida)
+            assertEquals(0, partidaDao.almacen.getValue(uid).saludRed)
+
+            // Al pedir la siguiente ronda, se activa el candado en vez de cargar otro escenario.
+            vm.onSiguienteAtaque()
+            advanceUntilIdle()
+            assertTrue(vm.estado.value.comprometida)
+            assertNull(vm.estado.value.escenario)
+            assertNull(vm.estado.value.ultimoResultado)
         }
 
     @Test
@@ -390,13 +445,17 @@ class AtaqueEnVivoViewModelTest {
         partidaDao: FakeEstadoPartidaDao,
         eventoDao: FakeEventoAtaqueDao,
         nivelInicial: Dificultad?,
-    ) = AtaqueEnVivoViewModel(
-        uid = uid,
-        partidaRepo = PartidaRepository(partidaDao),
-        eventoRepo = EventoAtaqueRepository(eventoDao),
-        reglaRepo = ReglaFirewallRepository(FakeReglaFirewallDao()),
-        nivelInicial = nivelInicial,
-    )
+    ): AtaqueEnVivoViewModel {
+        val partidaRepo = PartidaRepository(partidaDao)
+        return AtaqueEnVivoViewModel(
+            uid = uid,
+            partidaRepo = partidaRepo,
+            eventoRepo = EventoAtaqueRepository(eventoDao),
+            reglaRepo = ReglaFirewallRepository(FakeReglaFirewallDao()),
+            regenerador = regeneradorNeutro(partidaRepo),
+            nivelInicial = nivelInicial,
+        )
+    }
 
     @Test
     fun `sin elegir nivel se muestra el selector (sin escenario)`() = runTest(dispatcher) {
