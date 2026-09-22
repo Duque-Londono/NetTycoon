@@ -207,7 +207,9 @@ class AtaqueEnVivoViewModelTest {
             assertEquals(CategoriaResultado.FALSO_POSITIVO, resultado.categoria)
             assertEquals(-5, resultado.deltaPuntaje)
             assertEquals(-25, resultado.deltaDinero)
-            assertEquals(0, resultado.deltaSalud)
+            // El falso positivo también resta salud (indisponibilidad): base 100 - 10 = 90.
+            assertEquals(-10, resultado.deltaSalud)
+            assertEquals(90, partidaDao.almacen.getValue(uid).saludRed)
             assertEquals(legitimo.leccionError, resultado.leccion)
             assertEquals(0, vm.estado.value.aciertos)
         }

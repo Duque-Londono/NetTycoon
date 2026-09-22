@@ -36,6 +36,7 @@ object ConsecuenciasPartida {
             }
             CategoriaResultado.FALSO_POSITIVO -> {
                 deltaPuntaje = BalancePartida.PUNTAJE_FALSO_POSITIVO
+                deltaSalud = BalancePartida.SALUD_FALSO_POSITIVO
                 deltaDinero = BalancePartida.DINERO_FALSO_POSITIVO
             }
         }
