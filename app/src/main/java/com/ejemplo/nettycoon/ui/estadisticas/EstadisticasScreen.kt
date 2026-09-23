@@ -36,6 +36,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.domain.firewall.Rango
+import com.ejemplo.nettycoon.domain.firewall.siguienteRango
 import com.ejemplo.nettycoon.ui.theme.Espaciado
 import com.ejemplo.nettycoon.ui.theme.LocalColoresJuego
 import com.ejemplo.nettycoon.ui.theme.NetTycoonTheme
@@ -89,6 +91,16 @@ fun EstadisticasScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(Espaciado.md),
         ) {
+            // Cabecera de identidad (E4): va FUERA del when a propósito, para que el rango se
+            // vea también cuando el historial está vacío (usuario nuevo = Aprendiz, 0 pts).
+            estado.rango?.let { rango ->
+                CabeceraRango(
+                    rango = rango,
+                    puntaje = estado.puntaje,
+                    puntosParaSiguiente = estado.puntosParaSiguienteRango,
+                )
+            }
+
             when {
                 estado.cargando -> ContenidoCargando()
                 estado.error != null -> TarjetaMensaje(
@@ -103,6 +115,55 @@ fun EstadisticasScreen(
                 )
                 else -> ContenidoConDatos(estado)
             }
+        }
+    }
+}
+
+/**
+ * Cabecera de identidad de "Mi progreso" (E4): el rango del jugador, derivado de su puntaje.
+ *
+ * Se muestra SIEMPRE que haya estado cargado, incluso sin historial: un usuario nuevo ve
+ * "Aprendiz / 0 pts" en vez de una pantalla sin cabecera. El rango no bloquea nada; es un título.
+ */
+@Composable
+private fun CabeceraRango(
+    rango: Rango,
+    puntaje: Int,
+    puntosParaSiguiente: Int?,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
+        ) {
+            Text(
+                "Tu rango",
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                rango.etiqueta,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(rango.descripcion, style = MaterialTheme.typography.bodyMedium)
+
+            val siguiente = siguienteRango(puntaje)
+            Text(
+                if (puntosParaSiguiente != null && siguiente != null) {
+                    "$puntaje pts · faltan $puntosParaSiguiente para ${siguiente.etiqueta}"
+                } else {
+                    "$puntaje pts · rango máximo alcanzado"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }

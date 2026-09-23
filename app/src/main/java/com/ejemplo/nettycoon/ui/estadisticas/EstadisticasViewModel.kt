@@ -2,13 +2,18 @@ package com.ejemplo.nettycoon.ui.estadisticas
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.domain.firewall.puntajeParaSiguienteRango
+import com.ejemplo.nettycoon.domain.firewall.rangoPorPuntaje
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -27,6 +32,7 @@ import kotlinx.coroutines.launch
 class EstadisticasViewModel(
     private val uid: String,
     private val repositorio: EventoAtaqueRepository,
+    private val partidaRepo: PartidaRepository,
 ) : ViewModel() {
 
     private val _estado = MutableStateFlow(EstadisticasUiState())
@@ -36,27 +42,58 @@ class EstadisticasViewModel(
         observarHistorial()
     }
 
+    /**
+     * Observa a la vez el historial de ataques y la partida, y deriva de ambos el estado de la
+     * pantalla.
+     *
+     * **Usuario nuevo (sin eventos y sin partida):** los dos Flow de Room emiten de inmediato
+     * (lista vacía y null respectivamente), así que el combine produce su primera emisión sin
+     * esperar a nada y la pantalla NO se queda en "cargando" para siempre. Esa emisión baja
+     * cargando, deja el desempeño en cero y da rango APRENDIZ (puntaje 0).
+     *
+     * A propósito **no** se usa getOrCreatePartida: "Mi progreso" es una pantalla de solo lectura
+     * y no debe crear filas por el hecho de visitarla. Una partida ausente se interpreta como
+     * puntaje 0, que es justo lo que sería.
+     */
     private fun observarHistorial() {
         viewModelScope.launch {
-            repositorio.observarEventos(uid)
+            combine(
+                repositorio.observarEventos(uid),
+                partidaRepo.observarPartida(uid),
+            ) { eventos, partida ->
+                // Defensa en profundidad: el DAO ya filtra por owner, pero recalcamos aquí
+                // para no depender de esa garantía externa.
+                calcular(eventos.filter { it.owner == uid }, partida)
+            }
                 .catch { e ->
                     _estado.value = EstadisticasUiState(
                         cargando = false,
                         error = "No se pudo cargar tu progreso: ${e.message ?: "error desconocido"}.",
                     )
                 }
-                .collect { eventos ->
-                    // Defensa en profundidad: el DAO ya filtra por owner, pero recalcamos aquí
-                    // para no depender de esa garantía externa.
-                    _estado.value = calcular(eventos.filter { it.owner == uid })
-                }
+                .collect { estadoNuevo -> _estado.value = estadoNuevo }
         }
     }
 
-    private fun calcular(eventos: List<EventoAtaque>): EstadisticasUiState {
+    private fun calcular(
+        eventos: List<EventoAtaque>,
+        partida: EstadoPartida?,
+    ): EstadisticasUiState {
+        // El rango se deriva del puntaje y es INDEPENDIENTE del historial: se calcula primero para
+        // poder devolverlo también en el caso vacío (usuario nuevo).
+        val puntaje = partida?.puntaje ?: 0
+        val rango = rangoPorPuntaje(puntaje)
+        val faltan = puntajeParaSiguienteRango(puntaje)
+
         val total = eventos.size
         if (total == 0) {
-            return EstadisticasUiState(cargando = false, totalAtaques = 0)
+            return EstadisticasUiState(
+                cargando = false,
+                totalAtaques = 0,
+                rango = rango,
+                puntaje = puntaje,
+                puntosParaSiguienteRango = faltan,
+            )
         }
 
         val aciertos = eventos.count { it.acierto }
@@ -85,6 +122,9 @@ class EstadisticasViewModel(
             aciertos = aciertos,
             tasaAciertoPct = tasa,
             familias = familias,
+            rango = rango,
+            puntaje = puntaje,
+            puntosParaSiguienteRango = faltan,
             error = null,
         )
     }
