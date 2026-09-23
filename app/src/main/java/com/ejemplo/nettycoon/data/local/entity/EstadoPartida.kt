@@ -30,6 +30,20 @@ data class EstadoPartida(
     val puertoLan: Int = 80,
     val puertoWan: Int = 443,
 
+    /**
+     * Seguro de UN SOLO USO comprado en la tienda (E3): si está activo, el PRÓXIMO golpe de salud
+     * (brecha o falso positivo) se absorbe y el escudo se consume.
+     *
+     * Vive aquí, en Room, y no en prefs, **a propósito**: es estado de dominio de la partida y tiene
+     * que moverse de forma ATÓMICA con la salud, en la misma escritura de
+     * `ConsecuenciasPartida.aplicar` que aplica el daño. (El ancla de regeneración de E2 sí vive en
+     * prefs, pero por una razón que aquí no aplica: ver `PreferenciasRegen`.)
+     *
+     * No es apilable: solo hay "tiene escudo" o "no tiene". Introducirlo obligó a la migración
+     * 1→2 de [com.ejemplo.nettycoon.data.local.NetTycoonDatabase].
+     */
+    val escudoActivo: Boolean = false,
+
     /** Marca de tiempo de la última actualización (epoch millis). */
     val actualizadoEn: Long = System.currentTimeMillis(),
 )

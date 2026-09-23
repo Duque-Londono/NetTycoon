@@ -251,6 +251,11 @@ class AtaqueEnVivoViewModel(
 
         val sugerencia = calcularSugerencia(escenario, accion, acierto)
 
+        // E3: el escudo se consume DENTRO de `ConsecuenciasPartida.aplicar`, así que aquí solo
+        // observamos si pasó de activo a consumido para poder contarlo en el veredicto. No altera
+        // el acierto ni la categoría: el jugador falló igual, solo que sobrevivió al golpe.
+        val escudoAbsorbio = partida.escudoActivo && !actualizada.escudoActivo
+
         val veredicto = ResultadoDecision(
             acierto = acierto,
             categoria = categoria,
@@ -259,6 +264,7 @@ class AtaqueEnVivoViewModel(
             deltaPuntaje = actualizada.puntaje - partida.puntaje,
             deltaSalud = actualizada.saludRed - partida.saludRed,
             deltaDinero = actualizada.dineroVirtual - partida.dineroVirtual,
+            escudoAbsorbio = escudoAbsorbio,
             sugerencia = sugerencia,
         )
 

@@ -31,6 +31,9 @@ import com.ejemplo.nettycoon.ui.network.ConfigRedViewModelFactory
 import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasScreen
 import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasViewModel
 import com.ejemplo.nettycoon.ui.estadisticas.EstadisticasViewModelFactory
+import com.ejemplo.nettycoon.ui.tienda.TiendaScreen
+import com.ejemplo.nettycoon.ui.tienda.TiendaViewModel
+import com.ejemplo.nettycoon.ui.tienda.TiendaViewModelFactory
 import com.ejemplo.nettycoon.ui.panel.PanelScreen
 import com.ejemplo.nettycoon.ui.panel.PanelViewModel
 import com.ejemplo.nettycoon.ui.panel.PanelViewModelFactory
@@ -148,6 +151,7 @@ fun NetTycoonNavHost(
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
                 onIrAConfigRed = { navController.navigate(Rutas.ConfigRed.crearRuta(uid)) },
                 onIrAEstadisticas = { navController.navigate(Rutas.Estadisticas.crearRuta(uid)) },
+                onIrATienda = { navController.navigate(Rutas.Tienda.crearRuta(uid)) },
                 onVerOnboarding = { navController.navigate(Rutas.OnboardingManual.ruta) },
                 onCerrarSesion = {
                     authViewModel.cerrarSesion()
@@ -207,6 +211,23 @@ fun NetTycoonNavHost(
             AtaqueEnVivoScreen(
                 viewModel = ataqueViewModel,
                 onIrAReglas = { navController.navigate(Rutas.Firewall.crearRuta(uid)) },
+                onVolver = { navController.popBackStack() },
+            )
+        }
+
+        // Destino con argumento de ruta (mismo patrón que las demás): el uid viaja en la ruta,
+        // así la pantalla es autocontenida y su ViewModel no necesita consultar Firebase.
+        composable(
+            route = Rutas.Tienda.ruta,
+            arguments = listOf(navArgument(Rutas.ARG_UID) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val context = LocalContext.current.applicationContext
+            val uid = backStackEntry.arguments?.getString(Rutas.ARG_UID).orEmpty()
+            val tiendaViewModel: TiendaViewModel = viewModel(
+                factory = TiendaViewModelFactory(context, uid),
+            )
+            TiendaScreen(
+                viewModel = tiendaViewModel,
                 onVolver = { navController.popBackStack() },
             )
         }
