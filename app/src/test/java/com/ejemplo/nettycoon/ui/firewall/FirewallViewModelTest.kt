@@ -1,8 +1,15 @@
 package com.ejemplo.nettycoon.ui.firewall
 
 import com.ejemplo.nettycoon.data.local.entity.AccionFirewall
+import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.ReglaFirewall
+import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
+import com.ejemplo.nettycoon.domain.firewall.CuposReglas
+import com.ejemplo.nettycoon.domain.firewall.Rango
+import com.ejemplo.nettycoon.domain.firewall.UmbralesRango
+import com.ejemplo.nettycoon.data.local.dao.EstadoPartidaDao
+import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -44,9 +52,23 @@ class FirewallViewModelTest {
         Dispatchers.resetMain()
     }
 
+    /**
+     * Crea el ViewModel. Por defecto el jugador va con puntaje de EXPERTO (cupo 12) para que los
+     * tests que NO van del cupo no choquen con el; los que sí van del cupo pasan su puntaje.
+     */
     private fun crearViewModel(
         dao: FakeReglaFirewallDaoReactivo,
-    ): FirewallViewModel = FirewallViewModel(uid, ReglaFirewallRepository(dao))
+        puntaje: Int = UmbralesRango.PUNTAJE_EXPERTO,
+    ): FirewallViewModel {
+        val partidaDao: EstadoPartidaDao = FakeEstadoPartidaDao().apply {
+            almacen[uid] = EstadoPartida(owner = uid, puntaje = puntaje)
+        }
+        return FirewallViewModel(
+            uid,
+            ReglaFirewallRepository(dao),
+            PartidaRepository(partidaDao),
+        )
+    }
 
     private fun regla(
         id: Long,
@@ -251,5 +273,168 @@ class FirewallViewModelTest {
         viewModel.limpiarError()
 
         assertNull(viewModel.estado.value.error)
+    }
+    // --- Cupo de reglas activas (E5) ---
+
+    @Test
+    fun `el cupo sale del rango, que sale del puntaje`() = runTest {
+        val vm = crearViewModel(FakeReglaFirewallDaoReactivo(), puntaje = 0)
+        advanceUntilIdle()
+
+        assertEquals(Rango.APRENDIZ, vm.estado.value.rango)
+        assertEquals(CuposReglas.CUPO_APRENDIZ, vm.estado.value.cupo)
+        assertTrue(vm.estado.value.puedeCrear)
+        assertFalse(vm.estado.value.sobreCupo)
+    }
+
+    @Test
+    fun `bajo el cupo se puede crear`() = runTest {
+        // 2 activas con cupo 3 (Aprendiz): queda hueco.
+        val dao = FakeReglaFirewallDaoReactivo(listOf(regla(1, puerto = 22), regla(2, puerto = 80)))
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+
+        assertTrue(vm.estado.value.puedeCrear)
+        vm.onPuertoCambiado("443")
+        vm.crearRegla()
+        advanceUntilIdle()
+
+        assertEquals(3, dao.reglas.size)
+        assertNull(vm.estado.value.errorFormulario)
+    }
+
+    @Test
+    fun `en la frontera exacta del cupo ya no se puede crear y NO se escribe en Room`() = runTest {
+        // Justo en el tope: 3 activas con cupo 3.
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(regla(1, puerto = 22), regla(2, puerto = 80), regla(3, puerto = 443)),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+
+        assertFalse(vm.estado.value.puedeCrear)
+        vm.onPuertoCambiado("3306")
+        vm.crearRegla()
+        advanceUntilIdle()
+
+        assertEquals("No debe haberse creado ninguna regla", 3, dao.reglas.size)
+        assertNotNull("Debe explicar el cupo", vm.estado.value.errorFormulario)
+    }
+
+    @Test
+    fun `las reglas INACTIVAS no consumen cupo`() = runTest {
+        // 3 creadas pero solo 2 activas, con cupo 3: sigue habiendo hueco.
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(
+                regla(1, puerto = 22),
+                regla(2, puerto = 80),
+                regla(3, puerto = 443, activa = false),
+            ),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+
+        assertEquals(3, vm.estado.value.reglas.size)
+        assertEquals(2, vm.estado.value.reglasActivas)
+        assertTrue(vm.estado.value.puedeCrear)
+    }
+
+    @Test
+    fun `desactivar libera cupo y permite crear de nuevo`() = runTest {
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(regla(1, puerto = 22), regla(2, puerto = 80), regla(3, puerto = 443)),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+        assertFalse(vm.estado.value.puedeCrear)
+
+        // La salida: desactivar (nunca se bloquea).
+        vm.alternarActiva(dao.reglas.first { it.id == 3L })
+        advanceUntilIdle()
+
+        assertTrue(vm.estado.value.puedeCrear)
+        assertEquals("La regla se conserva, solo queda inactiva", 3, dao.reglas.size)
+    }
+
+    @Test
+    fun `reactivar en el tope se bloquea (no se puede esquivar el cupo)`() = runTest {
+        // 3 activas + 1 inactiva, cupo 3. Reactivar la cuarta dejaría 4 activas.
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(
+                regla(1, puerto = 22),
+                regla(2, puerto = 80),
+                regla(3, puerto = 443),
+                regla(4, puerto = 3306, activa = false),
+            ),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+
+        vm.alternarActiva(dao.reglas.first { it.id == 4L })
+        advanceUntilIdle()
+
+        assertFalse("La regla 4 debe seguir inactiva", dao.reglas.first { it.id == 4L }.activa)
+        assertEquals(3, vm.estado.value.reglasActivas)
+        assertNotNull(vm.estado.value.error)
+    }
+
+    @Test
+    fun `sobre el cupo tras bajar de rango no se crea nada y NO se borra ni desactiva ninguna`() = runTest {
+        // 5 activas (cupo de Técnico) y el jugador cae a Aprendiz, cuyo cupo es 3.
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(
+                regla(1, puerto = 22), regla(2, puerto = 80), regla(3, puerto = 443),
+                regla(4, puerto = 3306), regla(5, puerto = 25),
+            ),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+
+        val estado = vm.estado.value
+        assertTrue(estado.sobreCupo)
+        assertEquals(5, estado.reglasActivas)
+        assertEquals(CuposReglas.CUPO_APRENDIZ, estado.cupo)
+        assertFalse(estado.puedeCrear)
+
+        vm.onPuertoCambiado("5432")
+        vm.crearRegla()
+        advanceUntilIdle()
+
+        // Lo esencial: NADA se toca. Ni se crea, ni se borra, ni se desactiva.
+        assertEquals(5, dao.reglas.size)
+        assertTrue("Ninguna regla debe haberse desactivado", dao.reglas.all { it.activa })
+        assertNotNull(vm.estado.value.errorFormulario)
+    }
+
+    @Test
+    fun `eliminar nunca se bloquea, ni estando sobre el cupo`() = runTest {
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(
+                regla(1, puerto = 22), regla(2, puerto = 80), regla(3, puerto = 443),
+                regla(4, puerto = 3306), regla(5, puerto = 25),
+            ),
+        )
+        val vm = crearViewModel(dao, puntaje = 0)
+        advanceUntilIdle()
+        assertTrue(vm.estado.value.sobreCupo)
+
+        vm.eliminarRegla(dao.reglas.first { it.id == 5L })
+        advanceUntilIdle()
+
+        assertEquals(4, dao.reglas.size)
+    }
+
+    @Test
+    fun `subir de rango sube el cupo`() = runTest {
+        val dao = FakeReglaFirewallDaoReactivo(
+            listOf(regla(1, puerto = 22), regla(2, puerto = 80), regla(3, puerto = 443)),
+        )
+        // Mismo número de reglas, pero con rango Analista el cupo es 8.
+        val vm = crearViewModel(dao, puntaje = UmbralesRango.PUNTAJE_ANALISTA)
+        advanceUntilIdle()
+
+        assertEquals(Rango.ANALISTA, vm.estado.value.rango)
+        assertEquals(CuposReglas.CUPO_ANALISTA, vm.estado.value.cupo)
+        assertTrue(vm.estado.value.puedeCrear)
     }
 }
