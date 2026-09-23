@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.ejemplo.nettycoon.data.local.NetTycoonDatabase
+import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 
 /**
@@ -19,15 +20,18 @@ class FirewallViewModelFactory(
     private val uid: String,
 ) : ViewModelProvider.Factory {
 
-    private val repositorio = ReglaFirewallRepository(
-        NetTycoonDatabase.obtenerInstancia(context.applicationContext).reglaFirewallDao(),
-    )
+    private val db = NetTycoonDatabase.obtenerInstancia(context.applicationContext)
+    private val repositorio = ReglaFirewallRepository(db.reglaFirewallDao())
+
+    // El cupo de reglas activas (E5) se deriva del rango, y el rango del puntaje de la partida:
+    // de ahí esta segunda fuente. La pantalla no crea ni modifica la partida, solo la lee.
+    private val partidaRepo = PartidaRepository(db.estadoPartidaDao())
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         require(modelClass.isAssignableFrom(FirewallViewModel::class.java)) {
             "ViewModel desconocido: ${modelClass.name}"
         }
-        return FirewallViewModel(uid, repositorio) as T
+        return FirewallViewModel(uid, repositorio, partidaRepo) as T
     }
 }

@@ -112,12 +112,17 @@ fun FirewallScreen(
         ) {
             item { TarjetaIntro() }
 
+            if (!estado.cargando) {
+                item { TarjetaCupo(estado = estado) }
+            }
+
             item {
                 FormularioRegla(
                     puertoTexto = estado.puertoTexto,
                     ipTexto = estado.ipTexto,
                     accion = estado.accion,
                     errorFormulario = estado.errorFormulario,
+                    puedeCrear = estado.puedeCrear,
                     onPuertoCambiado = onPuertoCambiado,
                     onIpCambiada = onIpCambiada,
                     onAccionCambiada = onAccionCambiada,
@@ -149,6 +154,85 @@ fun FirewallScreen(
                     regla = regla,
                     onAlternarActiva = { onAlternarActiva(regla) },
                     onEliminar = { onEliminarRegla(regla) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Indicador del CUPO de reglas activas (E5): cuántas tienes de cuántas puedes.
+ *
+ * Tres estados, con tres tonos distintos a propósito:
+ * - **Con hueco:** informativo y discreto.
+ * - **En el tope:** avisa de que no puedes crear más y dice cómo conseguir hueco.
+ * - **Sobre el cupo** (bajaste de rango): lo explica sin dramatizar. NO es un error ni un castigo,
+ *   y por eso no usa el rol de error del tema; el texto deja claro que no se le ha quitado
+ *   ninguna regla y cuál es la salida.
+ *
+ * COPY BORRADOR: lo afina el equipo.
+ */
+@Composable
+private fun TarjetaCupo(estado: FirewallUiState, modifier: Modifier = Modifier) {
+    val contenedor = when {
+        estado.sobreCupo || !estado.puedeCrear -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contenido = when {
+        estado.sobreCupo || !estado.puedeCrear -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = contenedor,
+            contentColor = contenido,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(Espaciado.md),
+            verticalArrangement = Arrangement.spacedBy(Espaciado.xs),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Reglas activas",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    buildString {
+                        append("${estado.reglasActivas} / ${estado.cupo}")
+                        if (estado.sobreCupo) append(" · sobre tu cupo")
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Text(
+                when {
+                    estado.sobreCupo ->
+                        "Bajaste de rango, así que tu cupo se redujo a ${estado.cupo}. No te " +
+                            "hemos quitado ninguna regla: siguen todas aquí y las que estén " +
+                            "activas siguen funcionando. Para crear o activar otra, desactiva " +
+                            "antes alguna con su interruptor."
+                    !estado.puedeCrear ->
+                        "Alcanzaste tu cupo. Desactiva una regla para crear otra, o sube de rango " +
+                            "para automatizar más."
+                    else ->
+                        "Tu rango te permite ${estado.cupo} reglas activas a la vez. Automatizar " +
+                            "no puede cubrirlo todo: el resto lo decides tú, a mano."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            estado.rango?.let {
+                Text(
+                    "Rango actual: ${it.etiqueta}",
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         }
@@ -193,6 +277,7 @@ private fun FormularioRegla(
     ipTexto: String,
     accion: AccionFirewall,
     errorFormulario: String?,
+    puedeCrear: Boolean,
     onPuertoCambiado: (String) -> Unit,
     onIpCambiada: (String) -> Unit,
     onAccionCambiada: (AccionFirewall) -> Unit,
@@ -278,8 +363,14 @@ private fun FormularioRegla(
                 )
             }
 
-            Button(onClick = onCrearRegla, modifier = Modifier.fillMaxWidth()) {
-                Text("Crear regla")
+            // Con el cupo lleno el botón se deshabilita: la explicación la da la TarjetaCupo,
+            // justo encima, para no repetir el mismo mensaje dos veces en la misma pantalla.
+            Button(
+                onClick = onCrearRegla,
+                enabled = puedeCrear,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (puedeCrear) "Crear regla" else "Cupo lleno")
             }
         }
     }
