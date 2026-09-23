@@ -1,6 +1,9 @@
 package com.ejemplo.nettycoon.ui.panel
 
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.domain.firewall.Rango
+import com.ejemplo.nettycoon.domain.firewall.puntajeParaSiguienteRango
+import com.ejemplo.nettycoon.domain.firewall.rangoPorPuntaje
 import com.ejemplo.nettycoon.domain.model.ResultadoRonda
 
 /**
@@ -27,4 +30,18 @@ data class PanelUiState(
      */
     val anclaRegen: Long? = null,
     val error: String? = null,
-)
+) {
+    /**
+     * Rango del jugador (E4), DERIVADO del puntaje de la partida; `null` mientras no hay partida
+     * cargada.
+     *
+     * Se calcula aquí, como propiedad del estado, y no en el ViewModel: al ser una función pura sin
+     * estado propio no hay nada que orquestar, y así el rango nunca puede quedar desincronizado del
+     * puntaje que se está mostrando. Tampoco se persiste (ver [rangoPorPuntaje]).
+     */
+    val rango: Rango? get() = partida?.let { rangoPorPuntaje(it.puntaje) }
+
+    /** Puntos que faltan para el siguiente rango; `null` sin partida o ya en el rango máximo. */
+    val puntosParaSiguienteRango: Int?
+        get() = partida?.let { puntajeParaSiguienteRango(it.puntaje) }
+}
