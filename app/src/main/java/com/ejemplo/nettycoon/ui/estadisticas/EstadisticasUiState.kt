@@ -1,5 +1,7 @@
 package com.ejemplo.nettycoon.ui.estadisticas
 
+import com.ejemplo.nettycoon.domain.firewall.Rango
+
 /**
  * Nivel de dominio de una familia según su tasa de acierto. Los umbrales son PROVISIONALES
  * (los valida el equipo): ver [EstadisticasViewModel.UMBRAL_DOMINADA] y [UMBRAL_FLOJA].
@@ -48,6 +50,17 @@ data class EstadisticasUiState(
     val tasaAciertoPct: Int = 0,
     /** Familias ordenadas de mayor a menor tasa de acierto. */
     val familias: List<FamiliaResumen> = emptyList(),
+    /**
+     * Rango del jugador (E4), derivado del puntaje de su partida. `null` mientras carga.
+     *
+     * Un usuario nuevo SIN partida guardada se trata como puntaje 0, es decir [Rango.APRENDIZ]: la
+     * cabecera se muestra igual, no se queda en blanco ni bloquea la pantalla.
+     */
+    val rango: Rango? = null,
+    /** Puntaje acumulado del jugador (0 si aún no hay partida). */
+    val puntaje: Int = 0,
+    /** Puntos que faltan para el siguiente rango; `null` si ya está en el máximo o aún carga. */
+    val puntosParaSiguienteRango: Int? = null,
     val error: String? = null,
 ) {
     /** `true` cuando ya cargó y no hay historial que mostrar (usuario nuevo). */

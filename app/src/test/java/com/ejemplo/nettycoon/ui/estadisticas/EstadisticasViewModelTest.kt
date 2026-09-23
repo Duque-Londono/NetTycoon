@@ -1,9 +1,14 @@
 package com.ejemplo.nettycoon.ui.estadisticas
 
+import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
 import com.ejemplo.nettycoon.data.local.entity.EventoAtaque
 import com.ejemplo.nettycoon.data.local.entity.ResultadoEvento
 import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
+import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.domain.firewall.Rango
+import com.ejemplo.nettycoon.domain.firewall.UmbralesRango
+import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -48,8 +53,24 @@ class EstadisticasViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun crearViewModel(dao: FakeEventoAtaqueDaoReactivo): EstadisticasViewModel =
-        EstadisticasViewModel(uid, EventoAtaqueRepository(dao))
+    /**
+     * Crea el ViewModel. [puntaje] `null` = el usuario AÚN no tiene partida guardada (usuario
+     * nuevo): el fake devuelve una fila ausente y el rango debe caer en APRENDIZ sin romperse.
+     */
+    private fun crearViewModel(
+        dao: FakeEventoAtaqueDaoReactivo,
+        puntaje: Int? = null,
+    ): EstadisticasViewModel {
+        val partidaDao = FakeEstadoPartidaDao()
+        if (puntaje != null) {
+            partidaDao.almacen[uid] = EstadoPartida(owner = uid, puntaje = puntaje)
+        }
+        return EstadisticasViewModel(
+            uid,
+            EventoAtaqueRepository(dao),
+            PartidaRepository(partidaDao),
+        )
+    }
 
     private fun evento(
         id: Long,
@@ -234,5 +255,55 @@ class EstadisticasViewModelTest {
         assertFalse(estado.cargando)
         assertNotNull(estado.error)
         assertFalse(estado.estaVacio) // error no es lo mismo que vacío
+    }
+    // --- Rango (E4): se deriva del puntaje de la partida ---
+
+    @Test
+    fun `el rango se deriva del puntaje de la partida`() = runTest(dispatcher) {
+        val dao = FakeEventoAtaqueDaoReactivo()
+        val vm = crearViewModel(dao, puntaje = UmbralesRango.PUNTAJE_ANALISTA)
+
+        advanceUntilIdle()
+
+        val estado = vm.estado.value
+        assertEquals(Rango.ANALISTA, estado.rango)
+        assertEquals(UmbralesRango.PUNTAJE_ANALISTA, estado.puntaje)
+        assertEquals(
+            UmbralesRango.PUNTAJE_EXPERTO - UmbralesRango.PUNTAJE_ANALISTA,
+            estado.puntosParaSiguienteRango,
+        )
+    }
+
+    @Test
+    fun `usuario nuevo sin partida ni eventos muestra APRENDIZ y no se queda cargando`() =
+        runTest(dispatcher) {
+            // Ni historial ni fila de partida: el caso del usuario recién registrado.
+            val vm = crearViewModel(FakeEventoAtaqueDaoReactivo(), puntaje = null)
+
+            advanceUntilIdle()
+
+            val estado = vm.estado.value
+            assertFalse("No debe quedarse en cargando para siempre", estado.cargando)
+            assertTrue(estado.estaVacio)
+            assertNull(estado.error)
+            // El rango se muestra igual: Aprendiz con 0 puntos.
+            assertEquals(Rango.APRENDIZ, estado.rango)
+            assertEquals(0, estado.puntaje)
+            assertEquals(UmbralesRango.PUNTAJE_TECNICO, estado.puntosParaSiguienteRango)
+            // Y el desempeño queda en cero, sin dividir por cero.
+            assertEquals(0, estado.totalAtaques)
+            assertEquals(0, estado.tasaAciertoPct)
+        }
+
+    @Test
+    fun `con historial pero sin partida el rango sigue siendo APRENDIZ`() = runTest(dispatcher) {
+        val dao = FakeEventoAtaqueDaoReactivo(listOf(evento(1L, puerto = 443, acierto = true)))
+        val vm = crearViewModel(dao, puntaje = null)
+
+        advanceUntilIdle()
+
+        val estado = vm.estado.value
+        assertEquals(Rango.APRENDIZ, estado.rango)
+        assertEquals(1, estado.totalAtaques)
     }
 }

@@ -44,6 +44,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ejemplo.nettycoon.data.local.entity.EstadoPartida
+import com.ejemplo.nettycoon.domain.firewall.Rango
+import com.ejemplo.nettycoon.domain.firewall.siguienteRango
 import com.ejemplo.nettycoon.ui.componentes.ContadorRegen
 import com.ejemplo.nettycoon.ui.componentes.MedidorSalud
 import com.ejemplo.nettycoon.ui.theme.Espaciado
@@ -132,6 +134,14 @@ fun PanelScreen(
                 anclaRegen = estado.anclaRegen,
                 onRefrescarRegen = onRefrescarRegen,
             )
+
+            estado.rango?.let { rango ->
+                TarjetaRango(
+                    rango = rango,
+                    puntaje = estado.partida?.puntaje ?: 0,
+                    puntosParaSiguiente = estado.puntosParaSiguienteRango,
+                )
+            }
 
             if (estado.partida != null) {
                 MetricasSecundarias(partida = estado.partida)
@@ -223,6 +233,67 @@ private fun TarjetaSalud(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Tarjeta de IDENTIDAD del jugador (E4): su rango, derivado del puntaje.
+ *
+ * Va a ancho completo y con el color primario porque el rango es "quién eres", no una métrica más;
+ * por eso no se metió en la fila de celdas junto a Puntaje/Dinero/Nivel, donde habría quedado
+ * disfrazado de dato menor.
+ *
+ * La línea de progreso ("faltan N para X") es la que da GRANULARIDAD: el rango solo cambia tres
+ * veces en toda la partida, así que sin ella el jugador pasaría cientos de puntos sin ver moverse
+ * nada. En el rango máximo esa línea se sustituye por el total de puntos.
+ *
+ * El rango NO bloquea nada: es un título, no una llave.
+ */
+@Composable
+private fun TarjetaRango(
+    rango: Rango,
+    puntaje: Int,
+    puntosParaSiguiente: Int?,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(Espaciado.md),
+            horizontalArrangement = Arrangement.spacedBy(Espaciado.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.MilitaryTech,
+                contentDescription = null,
+                modifier = Modifier.size(32.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(Espaciado.xs)) {
+                Text(
+                    rango.etiqueta,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(rango.descripcion, style = MaterialTheme.typography.bodyMedium)
+
+                val siguiente = siguienteRango(puntaje)
+                val progreso = if (puntosParaSiguiente != null && siguiente != null) {
+                    "$puntaje pts · faltan $puntosParaSiguiente para ${siguiente.etiqueta}"
+                } else {
+                    "$puntaje pts · rango máximo alcanzado"
+                }
+                Text(
+                    progreso,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }
