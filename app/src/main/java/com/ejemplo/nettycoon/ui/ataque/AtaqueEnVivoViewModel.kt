@@ -12,6 +12,7 @@ import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
 import com.ejemplo.nettycoon.domain.firewall.ConsecuenciasPartida
+import com.ejemplo.nettycoon.domain.firewall.cupoPorPuntaje
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
 import com.ejemplo.nettycoon.domain.firewall.MotorFirewall
 import com.ejemplo.nettycoon.domain.firewall.aReglasEvaluables
@@ -380,8 +381,23 @@ class AtaqueEnVivoViewModel(
         }
         viewModelScope.launch {
             try {
-                val yaCubiertos = reglaRepo.obtenerReglasActivas(uid).map { it.puerto }.toSet()
-                val nuevos = puertos.filter { it !in yaCubiertos }
+                val activas = reglaRepo.obtenerReglasActivas(uid)
+                val yaCubiertos = activas.map { it.puerto }.toSet()
+                val candidatos = puertos.filter { it !in yaCubiertos }
+
+                // Compuerta del CUPO (E5). El puente es el OTRO camino de creación de reglas del
+                // juego, y automatizar una familia entera puede pedir hasta 7 de golpe: si el cupo
+                // no se aplicara también aquí, sería evadible por completo y no limitaria nada.
+                //
+                // El cupo se deriva del rango, y el rango del puntaje de la partida ya cargada.
+                // Si aún no hay partida se asume puntaje 0 (el cupo más restrictivo), que es lo
+                // conservador.
+                val cupo = cupoPorPuntaje(_estado.value.partida?.puntaje ?: 0)
+                val libres = (cupo - activas.size).coerceAtLeast(0)
+                // Se crean LAS QUE QUEPAN, en orden, y el aviso dice cuántas quedaron fuera.
+                val nuevos = candidatos.take(libres)
+                val sinCupo = candidatos.size - nuevos.size
+
                 nuevos.forEach { puerto ->
                     reglaRepo.guardarRegla(
                         ReglaFirewall(owner = uid, puerto = puerto, ip = null, accion = accion),
@@ -389,7 +405,16 @@ class AtaqueEnVivoViewModel(
                 }
                 val accionTexto = if (accion == AccionFirewall.DENY) "Bloquear" else "Permitir"
                 val aviso = when {
-                    nuevos.isEmpty() -> "Ya tenías reglas activas para esos puertos; no se creó ninguna."
+                    candidatos.isEmpty() ->
+                        "Ya tenías reglas activas para esos puertos; no se creó ninguna."
+                    nuevos.isEmpty() ->
+                        "No se creó ninguna: tu cupo es de $cupo reglas activas y ya lo tienes " +
+                            "lleno. Desactiva alguna en \"Mis reglas\" o sube de rango."
+                    sinCupo > 0 -> {
+                        val creadas = if (nuevos.size == 1) "1 regla" else "${nuevos.size} reglas"
+                        "Se crearon $creadas ($accionTexto). Faltaron $sinCupo por tu cupo de " +
+                            "$cupo reglas activas: sube de rango o desactiva alguna."
+                    }
                     nuevos.size == 1 -> "Regla creada: $accionTexto en el puerto ${nuevos.first()}."
                     else -> "Se crearon ${nuevos.size} reglas ($accionTexto) para esos puertos."
                 }

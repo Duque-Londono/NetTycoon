@@ -8,7 +8,9 @@ import com.ejemplo.nettycoon.data.repository.EventoAtaqueRepository
 import com.ejemplo.nettycoon.data.repository.PartidaRepository
 import com.ejemplo.nettycoon.data.repository.RegeneradorSalud
 import com.ejemplo.nettycoon.data.repository.ReglaFirewallRepository
+import com.ejemplo.nettycoon.domain.firewall.CuposReglas
 import com.ejemplo.nettycoon.domain.firewall.MapeoFamilias
+import com.ejemplo.nettycoon.domain.firewall.UmbralesRango
 import com.ejemplo.nettycoon.domain.firewall.RegenSalud
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEstadoPartidaDao
 import com.ejemplo.nettycoon.domain.firewall.fakes.FakeEventoAtaqueDao
@@ -86,8 +88,15 @@ class AtaqueEnVivoViewModelTest {
         nivel = 2,
     )
 
-    private fun contexto(): Pair<FakeEstadoPartidaDao, FakeEventoAtaqueDao> {
-        val partidaDao = FakeEstadoPartidaDao().apply { almacen[uid] = partidaBase() }
+    /**
+     * Contexto de partida para el test. El [puntaje] fija el RANGO y, con él, el cupo de reglas
+     * activas de E5: los tests del puente que no van del cupo pasan un puntaje alto para que el
+     * cupo no les estorbe, y los que sí van del cupo lo bajan a propósito.
+     */
+    private fun contexto(puntaje: Int = 100): Pair<FakeEstadoPartidaDao, FakeEventoAtaqueDao> {
+        val partidaDao = FakeEstadoPartidaDao().apply {
+            almacen[uid] = partidaBase().copy(puntaje = puntaje)
+        }
         return partidaDao to FakeEventoAtaqueDao()
     }
 
@@ -770,7 +779,8 @@ class AtaqueEnVivoViewModelTest {
     @Test
     fun `automatizarFamilia crea las reglas que faltan y no duplica las ya cubiertas`() =
         runTest(dispatcher) {
-            val (partidaDao, eventoDao) = contexto()
+            // Rango EXPERTO: este test va del filtrado de duplicados, no del cupo de E5.
+            val (partidaDao, eventoDao) = contexto(puntaje = UmbralesRango.PUNTAJE_EXPERTO)
             // Regla activa preexistente en el 22 (Acceso remoto), en un puerto que NO usan los
             // escenarios: así no auto-resuelve ninguna ronda y podemos probar el filtrado.
             val reglaDao = FakeReglaFirewallDao(listOf(reglaDe(22, AccionFirewall.DENY)))
@@ -900,4 +910,67 @@ class AtaqueEnVivoViewModelTest {
         /** Copia local del umbral del puente para no acoplar el test al valor exacto. */
         const val UMBRAL = 3
     }
+    // --- Cupo de reglas activas (E5) aplicado al puente ---
+
+    @Test
+    fun `automatizarFamilia solo crea las que caben en el cupo y avisa de las que faltaron`() =
+        runTest(dispatcher) {
+            // Aprendiz (puntaje 0) => cupo 3. La familia Acceso remoto pide 4 puertos.
+            val (partidaDao, eventoDao) = contexto(puntaje = 0)
+            val reglaDao = FakeReglaFirewallDao()
+            val escenarios = listOf(
+                maliciosoEnPuerto(23), maliciosoEnPuerto(3389), maliciosoEnPuerto(5900),
+            )
+            val vm = crearViewModel(
+                partidaDao, eventoDao, escenarios,
+                seleccionar = { actual, _ -> (actual ?: -1) + 1 }, reglaDao = reglaDao,
+            )
+            advanceUntilIdle()
+            llegarAlUmbral(vm)
+            assertNotNull(vm.estado.value.ultimoResultado!!.sugerencia)
+
+            vm.automatizarFamilia()
+            advanceUntilIdle()
+
+            // Se crean SOLO las que caben, nunca más que el cupo.
+            val reglas = reglaDao.obtenerActivasPorOwner(uid)
+            assertEquals(CuposReglas.CUPO_APRENDIZ, reglas.size)
+            assertNotNull("Debe avisar de lo que no cupo", vm.estado.value.avisoReglas)
+            assertTrue(
+                "El aviso debe hablar del cupo",
+                vm.estado.value.avisoReglas!!.contains("cupo"),
+            )
+        }
+
+    @Test
+    fun `con el cupo lleno el puente no crea ninguna regla`() =
+        runTest(dispatcher) {
+            // Aprendiz (cupo 3) y ya tiene 3 reglas activas en puertos que no usan los escenarios.
+            val (partidaDao, eventoDao) = contexto(puntaje = 0)
+            val reglaDao = FakeReglaFirewallDao(
+                listOf(
+                    reglaDe(80, AccionFirewall.DENY),
+                    reglaDe(443, AccionFirewall.DENY),
+                    reglaDe(25, AccionFirewall.DENY),
+                ),
+            )
+            val escenarios = listOf(
+                maliciosoEnPuerto(23), maliciosoEnPuerto(3389), maliciosoEnPuerto(5900),
+            )
+            val vm = crearViewModel(
+                partidaDao, eventoDao, escenarios,
+                seleccionar = { actual, _ -> (actual ?: -1) + 1 }, reglaDao = reglaDao,
+            )
+            advanceUntilIdle()
+            llegarAlUmbral(vm)
+
+            vm.automatizarFamilia()
+            advanceUntilIdle()
+
+            // Ni una sola regla nueva, y las que ya tenía siguen intactas.
+            val reglas = reglaDao.obtenerActivasPorOwner(uid)
+            assertEquals(3, reglas.size)
+            assertEquals(setOf(80, 443, 25), reglas.map { it.puerto }.toSet())
+            assertNotNull(vm.estado.value.avisoReglas)
+        }
 }
